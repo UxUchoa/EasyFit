@@ -204,6 +204,8 @@ O arquivo [`.env.example`](./.env.example) contém a lista completa e valores se
 | `ALLOWED_ORIGINS` | Origens adicionais autorizadas, separadas por vírgula. |
 | `OPEN_FOOD_FACTS_CONTACT` | URL ou e-mail de contato enviado à base aberta. |
 | `OPEN_FOOD_FACTS_*` | Timeout, tentativas, circuit breaker e limites lógicos da integração. |
+| `USDA_FDC_API_KEY` | Chave gratuita do FoodData Central; `DEMO_KEY` serve para testes com quota menor. |
+| `USDA_FDC_*` | Timeout, tentativas, circuit breaker e limite lógico da consulta nutricional. |
 
 > [!CAUTION]
 > Nunca envie `.env`, senhas, chaves ou URLs reais de banco para o Git. O arquivo já está protegido pelo `.gitignore`.

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const IMPORT_PARSER_VERSION = 'easyfit-json-2026-07-22.1';
+export const IMPORT_PARSER_VERSION = 'easyfit-json-2026-07-23.2';
 export const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
 
 export const importItemInputSchema = z.object({
@@ -95,4 +95,3 @@ export function reviewBlockingReason(item: ReviewableItem) {
   if (!unit?.trim()) return 'Informe a unidade.';
   return null;
 }
-

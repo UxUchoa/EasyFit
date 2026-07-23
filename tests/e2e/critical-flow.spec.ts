@@ -20,6 +20,7 @@ test('páginas públicas críticas não têm violações axe sérias', async ({ 
 });
 
 test('cadastro, onboarding e adição rápida preservam o fluxo principal', async ({ page }) => {
+  test.setTimeout(90_000);
   const username = `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const password = 'Senha-e2e-segura-2026!';
 
@@ -43,6 +44,7 @@ test('cadastro, onboarding e adição rápida preservam o fluxo principal', asyn
   await page.getByLabel('Altura (cm)').fill('165');
   await page.getByLabel('Peso atual (kg)').fill('68');
   await page.getByLabel('Peso desejado (kg)').fill('64');
+  await page.getByLabel('Nível de atividade no dia a dia').selectOption('sedentary');
   await page.getByRole('button', { name: 'Continuar' }).click();
 
   await page.getByLabel('Objetivo principal').selectOption('maintain');
@@ -145,11 +147,14 @@ test('cadastro, onboarding e adição rápida preservam o fluxo principal', asyn
 
   await page.goto('/importacoes');
   await expect(page.getByRole('complementary', { name: 'Ajuda contextual' }).getByRole('link', { name: 'Voltar ao diário alimentar' })).toBeVisible();
-  const importContent = JSON.stringify({ name: 'Plano alimentar E2E', days: [{ label: 'Segunda-feira', meals: [{ name: 'Almoço', items: [{ food: 'Uma fruta' }] }] }] });
+  const importedFoodName = `Banana automatizada ${Date.now()}`;
+  const importedFood = await db.food.create({ data: { name: importedFoodName, source: 'TEST_IMPORT', baseQuantity: 100, baseUnit: 'g', calories: 100, proteinGrams: 2, carbohydrateGrams: 20, fatGrams: 1 } });
+  const importContent = JSON.stringify({ name: 'Plano alimentar E2E', days: [{ label: 'Segunda-feira', meals: [{ name: 'Almoço', items: [{ food: importedFoodName, quantity: 150, unit: 'g' }, { food: 'Uma fruta' }] }] }] });
   await page.getByLabel('Arquivo da dieta').setInputFiles({ name: 'dieta-e2e.json', mimeType: 'application/json', buffer: Buffer.from(importContent) });
   await page.getByRole('button', { name: 'Receber arquivo' }).click();
   const importCard = page.getByRole('article').filter({ hasText: 'dieta-e2e.json' });
   await expect(importCard).toContainText('Em revisão');
+  await expect(importCard).toContainText('1 de 2 itens foram preparados automaticamente');
   await expect(importCard).toContainText('quantidade ausente');
   await importCard.getByLabel('Decisão').selectOption('MANUAL');
   await importCard.getByLabel('Alimento final').fill('Banana');
@@ -161,6 +166,14 @@ test('cadastro, onboarding e adição rápida preservam o fluxo principal', asyn
   await expect(page.getByRole('status')).toContainText('Dieta confirmada');
   await expect(importCard).toContainText('Plano alimentar E2E');
   await expectNoSeriousAccessibilityViolations(page);
+
+  await page.goto('/dieta?date=2026-07-27');
+  const activeDiet = page.getByRole('region', { name: 'Plano alimentar E2E' });
+  await expect(activeDiet).toContainText('150 kcal previstas');
+  await activeDiet.getByRole('button', { name: 'Comi esta refeição' }).click();
+  await expect(activeDiet.getByRole('button', { name: 'Refeição registrada' })).toBeDisabled();
+  await expect(page.getByRole('listitem').filter({ hasText: importedFoodName }).filter({ hasText: 'REALIZADO' })).toContainText('150 kcal');
+  expect(await db.mealEntry.count({ where: { foodId: importedFood.id, meal: { dayLog: { userId: e2eUser.id, logicalDate: new Date('2026-07-27T00:00:00.000Z') } } } })).toBe(1);
 
   const supportTarget = `support-target-${Date.now()}`;
   await db.user.update({ where: { username }, data: { role: 'SUPPORT' } });

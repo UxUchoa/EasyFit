@@ -1,33 +1,24 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { ImportItemDecision, Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
+import { calculateEntryNutrition } from '@/lib/diary/nutrition';
 import { assertImportTransition, dietImportSchema, flattenImportItems, IMPORT_PARSER_VERSION, reviewBlockingReason, validateJsonUpload } from './domain';
+import { extractDeclaredCalories, normalizeFoodName, resolveImportFoodNames } from './food-resolver';
 
-type Transaction = Prisma.TransactionClient;
-
-function normalizedName(value: string) {
-  return value.normalize('NFKC').trim().toLocaleLowerCase('pt-BR');
-}
-
-async function extractedItems(transaction: Transaction, userId: string, payload: Prisma.JsonValue) {
+async function extractedItems(userId: string, payload: Prisma.JsonValue) {
   const parsed = dietImportSchema.parse(payload);
   const flat = flattenImportItems(parsed);
   if (flat.length > 1_000) throw new Error('A importação pode conter no máximo 1.000 itens.');
-  const names = [...new Set(flat.map((item) => item.extractedName))];
-  const foods = await transaction.food.findMany({
-    where: { AND: [{ OR: [{ ownerId: null }, { ownerId: userId }] }, { OR: names.map((name) => ({ name: { equals: name, mode: 'insensitive' as const } })) }] },
-    select: { id: true, name: true, source: true },
-  });
-  const byName = new Map(foods.map((food) => [normalizedName(food.name), food]));
+  const resolved = await resolveImportFoodNames(userId, flat.map((item) => item.extractedName));
   return flat.map((item) => {
-    const match = byName.get(normalizedName(item.extractedName));
+    const match = resolved.get(normalizeFoodName(item.extractedName));
     const complete = item.extractedQuantity !== null && item.extractedUnit !== null;
     return {
       ...item,
-      matchedFoodId: match?.id ?? null,
+      matchedFoodId: match?.foodId ?? null,
       matchedFoodName: match?.name ?? null,
       matchedFoodSource: match?.source ?? null,
-      matchConfidence: match ? 1 : null,
+      matchConfidence: match?.confidence ?? null,
       decision: match && complete ? 'KEEP' as const : 'PENDING' as const,
     };
   });
@@ -36,8 +27,8 @@ async function extractedItems(transaction: Transaction, userId: string, payload:
 export async function createJsonImport(userId: string, input: { filename: string; mimeType: string; content: string }) {
   const validated = validateJsonUpload(input);
   const contentSha256 = createHash('sha256').update(input.content, 'utf8').digest('hex');
-  return db.$transaction(async (transaction) => {
-    const job = await transaction.importJob.create({ data: {
+  const job = await db.$transaction(async (transaction) => {
+    const created = await transaction.importJob.create({ data: {
       userId,
       status: 'PENDING',
       originalFilename: input.filename.trim(),
@@ -48,31 +39,45 @@ export async function createJsonImport(userId: string, input: { filename: string
       parserVersion: IMPORT_PARSER_VERSION,
     } });
     assertImportTransition('PENDING', 'PROCESSING');
-    await transaction.importJob.update({ where: { id: job.id }, data: { status: 'PROCESSING', startedAt: new Date(), attemptCount: 1 } });
-    const items = await extractedItems(transaction, userId, validated.data);
-    await transaction.importItem.createMany({ data: items.map((item) => ({ importJobId: job.id, ...item })) });
-    assertImportTransition('PROCESSING', 'REVIEW');
-    const ready = await transaction.importJob.update({ where: { id: job.id }, data: { status: 'REVIEW', reviewReadyAt: new Date() }, include: { items: { orderBy: { position: 'asc' } } } });
-    await transaction.auditEvent.create({ data: { actorUserId: userId, action: 'diet_import.received', objectType: 'ImportJob', objectId: job.id, result: 'SUCCESS', correlationId: randomUUID(), context: { mimeType: job.mimeType, byteSize: job.byteSize, itemCount: items.length, parserVersion: job.parserVersion } } });
-    return ready;
+    return transaction.importJob.update({ where: { id: created.id }, data: { status: 'PROCESSING', startedAt: new Date(), attemptCount: 1 } });
   });
+  try {
+    const items = await extractedItems(userId, validated.data);
+    return await db.$transaction(async (transaction) => {
+      await transaction.importItem.createMany({ data: items.map((item) => ({ importJobId: job.id, ...item })) });
+      assertImportTransition('PROCESSING', 'REVIEW');
+      const ready = await transaction.importJob.update({ where: { id: job.id }, data: { status: 'REVIEW', reviewReadyAt: new Date() }, include: { items: { orderBy: { position: 'asc' } } } });
+      await transaction.auditEvent.create({ data: { actorUserId: userId, action: 'diet_import.received', objectType: 'ImportJob', objectId: job.id, result: 'SUCCESS', correlationId: randomUUID(), context: { mimeType: job.mimeType, byteSize: job.byteSize, itemCount: items.length, autoMatchedCount: items.filter((item) => item.decision === 'KEEP').length, uniqueFoodCount: new Set(items.map((item) => normalizeFoodName(item.extractedName))).size, parserVersion: job.parserVersion } } });
+      return ready;
+    });
+  } catch (error) {
+    await db.importJob.update({ where: { id: job.id }, data: { status: 'FAILED', failureReason: error instanceof Error ? error.message.slice(0, 500) : 'Falha ao resolver os alimentos.' } }).catch(() => undefined);
+    throw error;
+  }
 }
 
 export async function reprocessImport(userId: string, importJobId: string) {
-  return db.$transaction(async (transaction) => {
+  const job = await db.$transaction(async (transaction) => {
     const job = await transaction.importJob.findFirst({ where: { id: importJobId, userId } });
     if (!job) throw new Error('Importação não encontrada.');
     if (job.status === 'COMPLETED' || job.status === 'CANCELLED') throw new Error('Esta importação não pode ser reprocessada.');
     assertImportTransition(job.status, 'PROCESSING');
-    await transaction.importJob.update({ where: { id: job.id }, data: { status: 'PROCESSING', startedAt: new Date(), failureReason: null, attemptCount: { increment: 1 } } });
-    const items = await extractedItems(transaction, userId, job.sourcePayload);
-    await transaction.importItem.deleteMany({ where: { importJobId: job.id } });
-    await transaction.importItem.createMany({ data: items.map((item) => ({ importJobId: job.id, ...item })) });
-    assertImportTransition('PROCESSING', 'REVIEW');
-    const ready = await transaction.importJob.update({ where: { id: job.id }, data: { status: 'REVIEW', reviewReadyAt: new Date() }, include: { items: { orderBy: { position: 'asc' } } } });
-    await transaction.auditEvent.create({ data: { actorUserId: userId, action: 'diet_import.reprocessed', objectType: 'ImportJob', objectId: job.id, result: 'SUCCESS', correlationId: randomUUID(), context: { attemptCount: ready.attemptCount, itemCount: items.length, parserVersion: job.parserVersion } } });
-    return ready;
+    return transaction.importJob.update({ where: { id: job.id }, data: { status: 'PROCESSING', startedAt: new Date(), failureReason: null, attemptCount: { increment: 1 } } });
   });
+  try {
+    const items = await extractedItems(userId, job.sourcePayload);
+    return await db.$transaction(async (transaction) => {
+      await transaction.importItem.deleteMany({ where: { importJobId: job.id } });
+      await transaction.importItem.createMany({ data: items.map((item) => ({ importJobId: job.id, ...item })) });
+      assertImportTransition('PROCESSING', 'REVIEW');
+      const ready = await transaction.importJob.update({ where: { id: job.id }, data: { status: 'REVIEW', reviewReadyAt: new Date() }, include: { items: { orderBy: { position: 'asc' } } } });
+      await transaction.auditEvent.create({ data: { actorUserId: userId, action: 'diet_import.reprocessed', objectType: 'ImportJob', objectId: job.id, result: 'SUCCESS', correlationId: randomUUID(), context: { attemptCount: ready.attemptCount, itemCount: items.length, autoMatchedCount: items.filter((item) => item.decision === 'KEEP').length, parserVersion: job.parserVersion } } });
+      return ready;
+    });
+  } catch (error) {
+    await db.importJob.update({ where: { id: job.id }, data: { status: 'FAILED', failureReason: error instanceof Error ? error.message.slice(0, 500) : 'Falha ao resolver os alimentos.' } }).catch(() => undefined);
+    throw error;
+  }
 }
 
 export async function reviewImportItem(userId: string, importJobId: string, itemId: string, input: { decision: ImportItemDecision; name?: string | null; quantity?: number | null; unit?: string | null }) {
@@ -104,19 +109,37 @@ export async function confirmImport(userId: string, importJobId: string) {
     if (blocked) throw new Error(`Revise o item ${blocked.position + 1}: ${reviewBlockingReason(blocked)}`);
     const parsed = dietImportSchema.parse(job.sourcePayload);
     const ignoredCount = job.items.filter((item) => item.decision === 'IGNORE').length;
+    const matchedFoodIds = job.items.flatMap((item) => item.matchedFoodId ? [item.matchedFoodId] : []);
+    const matchedFoods = matchedFoodIds.length ? await transaction.food.findMany({ where: { id: { in: matchedFoodIds }, OR: [{ ownerId: null }, { ownerId: userId }] }, include: { portions: true } }) : [];
+    const foodById = new Map(matchedFoods.map((food) => [food.id, food]));
     const snapshot = {
       importJobId: job.id,
       parserVersion: job.parserVersion,
       ignoredCount,
-      items: job.items.filter((item) => item.decision !== 'IGNORE').map((item) => ({
-        day: item.dayLabel,
-        meal: item.mealLabel,
-        name: item.reviewedName ?? item.matchedFoodName ?? item.extractedName,
-        quantity: Number(item.reviewedQuantity ?? item.extractedQuantity),
-        unit: item.reviewedUnit ?? item.extractedUnit,
-        sourcePointer: item.sourcePointer,
-        catalog: item.matchedFoodId ? { foodId: item.matchedFoodId, name: item.matchedFoodName, source: item.matchedFoodSource, confidence: item.matchConfidence ? Number(item.matchConfidence) : null } : null,
-      })),
+      items: job.items.filter((item) => item.decision !== 'IGNORE').map((item) => {
+        const quantity = Number(item.reviewedQuantity ?? item.extractedQuantity);
+        const unit = item.reviewedUnit ?? item.extractedUnit!;
+        const food = item.decision === 'MANUAL' || !item.matchedFoodId ? null : foodById.get(item.matchedFoodId);
+        const nutrients = food ? calculateEntryNutrition({
+          baseQuantity: Number(food.baseQuantity), baseUnit: food.baseUnit, calories: Number(food.calories),
+          proteinGrams: food.proteinGrams === null ? null : Number(food.proteinGrams),
+          carbohydrateGrams: food.carbohydrateGrams === null ? null : Number(food.carbohydrateGrams),
+          fatGrams: food.fatGrams === null ? null : Number(food.fatGrams),
+          portions: food.portions.map((portion) => ({ name: portion.name, unit: portion.unit, quantityInBaseUnit: Number(portion.quantityInBaseUnit) })),
+        }, quantity, unit) : null;
+        const declaredCalories = extractDeclaredCalories(item.extractedName);
+        const nutrition = nutrients ?? (declaredCalories === null ? null : { calories: declaredCalories * quantity, proteinGrams: null, carbohydrateGrams: null, fatGrams: null });
+        return {
+          day: item.dayLabel,
+          meal: item.mealLabel,
+          name: item.reviewedName ?? item.extractedName,
+          quantity,
+          unit,
+          sourcePointer: item.sourcePointer,
+          catalog: item.matchedFoodId ? { foodId: item.matchedFoodId, name: item.matchedFoodName, source: item.matchedFoodSource, confidence: item.matchConfidence ? Number(item.matchConfidence) : null } : null,
+          nutrition,
+        };
+      }),
     };
     await transaction.dietPlan.updateMany({ where: { userId, active: true }, data: { active: false } });
     const plan = await transaction.dietPlan.create({ data: { userId, name: parsed.name, active: true, sourceImportJobId: job.id, versions: { create: { version: 1, snapshot, confirmedAt: new Date() } } }, include: { versions: true } });

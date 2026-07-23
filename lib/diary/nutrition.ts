@@ -25,7 +25,9 @@ const UNIT_FACTORS: Record<string, { dimension: "mass" | "volume"; toBase: numbe
 };
 
 function normalizeUnit(unit: string) {
-  return unit.trim().toLocaleLowerCase("pt-BR");
+  const normalized = unit.trim().toLocaleLowerCase("pt-BR");
+  if (["un", "und", "unid", "unidade", "unidades"].includes(normalized)) return "unidade";
+  return normalized;
 }
 
 export function quantityInFoodBaseUnit(

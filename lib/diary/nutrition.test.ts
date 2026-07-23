@@ -30,6 +30,12 @@ describe("nutrition normalization", () => {
     expect(calculateEntryNutrition(food, 1, "copo")).toBeNull();
   });
 
+  it("accepts common abbreviations for unit portions", () => {
+    const unitFood = { ...food, portions: [{ name: "unidade", unit: "unidade", quantityInBaseUnit: 50 }] };
+    expect(calculateEntryNutrition(unitFood, 2, "un")?.calories).toBe(200);
+    expect(calculateEntryNutrition(unitFood, 3, "unidades")?.calories).toBe(300);
+  });
+
   it("marks aggregate macros incomplete instead of inventing values", () => {
     expect(
       aggregateNutrition([

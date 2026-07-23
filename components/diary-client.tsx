@@ -7,6 +7,7 @@ import { enqueueOfflineMutation, OFFLINE_SYNC_COMPLETED_EVENT, putOfflineMutatio
 import type { OfflineConflict } from '@/lib/offline/domain';
 import { BarcodeScanner } from '@/components/barcode-scanner';
 import { FoodResultsSkeleton } from '@/components/page-skeletons';
+import { DIET_PLAN_APPLIED_EVENT, type DietPlanAppliedDetail } from '@/lib/diary/events';
 
 type DiaryEntry = {
   id: string;
@@ -120,6 +121,19 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
     };
     window.addEventListener(OFFLINE_SYNC_COMPLETED_EVENT, syncCompleted);
     return () => window.removeEventListener(OFFLINE_SYNC_COMPLETED_EVENT, syncCompleted);
+  }, []);
+
+  useEffect(() => {
+    const planApplied = (event: Event) => {
+      const detail = (event as CustomEvent<DietPlanAppliedDetail<DiaryEntry>>).detail;
+      if (!detail?.mealSlug || !detail.entries?.length) return;
+      setMeals((items) => items.map((meal) => meal.slug === detail.mealSlug
+        ? { ...meal, entries: [...meal.entries.filter((entry) => !detail.entries.some((next) => next.id === entry.id)), ...detail.entries] }
+        : meal));
+      setNotice('Refeição da dieta adicionada ao diário.');
+    };
+    window.addEventListener(DIET_PLAN_APPLIED_EVENT, planApplied);
+    return () => window.removeEventListener(DIET_PLAN_APPLIED_EVENT, planApplied);
   }, []);
 
   function showNotice(message: string) {

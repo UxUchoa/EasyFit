@@ -66,7 +66,7 @@ Atualizado em 22 de julho de 2026. Este arquivo é um mapa de entrega, não subs
 
 ## Parcial — requer endurecimento antes do aceite
 
-- RF-ALI-04: Open Food Facts e cache local funcionam; bases TACO/TBCA e USDA ainda dependem de homologação/licença.
+- RF-ALI-04: Open Food Facts e USDA FoodData Central funcionam com cache local, atribuição de fonte e resiliência; TACO/TBCA em escala ainda dependem de ingestão homologada.
 - RF-NOT-01/02: agenda, canal, janela silenciosa e centro in-app estão prontos; a entrega push real ainda depende de provedor, subscription e worker homologados.
 - RF-IMP-01/02/08: o piloto JSON executa o domínio completo sem disco local e permite reprocessamento; PDF textual, DOCX, object storage, antivírus e fila/worker remotos ainda dependem de provedores homologados.
 - RNF-02: axe, foco por teclado, reflow em 320 px e redução de movimento têm testes automatizados; falta revisão manual WCAG 2.2 AA com leitor de tela, zoom real e dispositivos representativos.
@@ -76,7 +76,7 @@ Atualizado em 22 de julho de 2026. Este arquivo é um mapa de entrega, não subs
 
 ## Próximos blocos MVP 1
 
-1. Catálogo: homologar licenças, atribuições, quotas e ingestão de TACO/TBCA/USDA.
+1. Catálogo: ampliar a ingestão brasileira TACO/TBCA e monitorar as quotas gratuitas do USDA/Open Food Facts.
 2. Importação completa: object storage, fila/worker, verificação de malware e parsers PDF textual/DOCX sobre o domínio JSON já versionado.
 3. Aceite: ampliar E2E e segurança, executar acessibilidade e smoke em Preview/Production e homologar a evidência em dispositivos reais.
 

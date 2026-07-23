@@ -3,6 +3,8 @@ import { ContextualHelp } from '@/components/contextual-help';
 import { ImportManager } from '@/components/import-manager';
 import { requireUser } from '@/lib/auth/session';
 import { db } from '@/lib/db';
+import { calculateEntryNutrition } from '@/lib/diary/nutrition';
+import { extractDeclaredCalories } from '@/lib/imports/food-resolver';
 
 export const metadata: Metadata = { title: 'Importar dieta' };
 
@@ -14,6 +16,9 @@ export default async function ImportsPage() {
     take: 10,
     include: { items: { orderBy: { position: 'asc' } }, dietPlan: true },
   });
+  const matchedFoodIds = [...new Set(jobs.flatMap((job) => job.items.flatMap((item) => item.matchedFoodId ? [item.matchedFoodId] : [])))];
+  const matchedFoods = matchedFoodIds.length ? await db.food.findMany({ where: { id: { in: matchedFoodIds }, OR: [{ ownerId: null }, { ownerId: user.id }] }, include: { portions: true } }) : [];
+  const foodById = new Map(matchedFoods.map((food) => [food.id, food]));
   return <main className='shell py-8'>
     <p className='eyebrow'>Importação de dieta</p>
     <h1 className='display mt-2 text-4xl font-bold'>Receba, revise, só então ative.</h1>
@@ -31,7 +36,20 @@ export default async function ImportsPage() {
       reviewReadyAt: job.reviewReadyAt?.toISOString() ?? null,
       completedAt: job.completedAt?.toISOString() ?? null,
       plan: job.dietPlan ? { id: job.dietPlan.id, name: job.dietPlan.name, active: job.dietPlan.active } : null,
-      items: job.items.map((item) => ({
+      items: job.items.map((item) => {
+        const food = item.matchedFoodId ? foodById.get(item.matchedFoodId) : null;
+        const quantity = Number(item.reviewedQuantity ?? item.extractedQuantity ?? 0);
+        const unit = item.reviewedUnit ?? item.extractedUnit ?? '';
+        const nutrition = food && quantity > 0 && unit ? calculateEntryNutrition({
+          baseQuantity: Number(food.baseQuantity), baseUnit: food.baseUnit, calories: Number(food.calories),
+          proteinGrams: food.proteinGrams === null ? null : Number(food.proteinGrams),
+          carbohydrateGrams: food.carbohydrateGrams === null ? null : Number(food.carbohydrateGrams),
+          fatGrams: food.fatGrams === null ? null : Number(food.fatGrams),
+          portions: food.portions.map((portion) => ({ name: portion.name, unit: portion.unit, quantityInBaseUnit: Number(portion.quantityInBaseUnit) })),
+        }, quantity, unit) : null;
+        const declaredCalories = extractDeclaredCalories(item.extractedName);
+        const estimate = nutrition ?? (declaredCalories === null ? null : { calories: declaredCalories * Math.max(1, quantity), proteinGrams: null, carbohydrateGrams: null, fatGrams: null });
+        return {
         id: item.id,
         position: item.position,
         dayLabel: item.dayLabel,
@@ -48,7 +66,12 @@ export default async function ImportsPage() {
         reviewedName: item.reviewedName,
         reviewedQuantity: item.reviewedQuantity?.toString() ?? null,
         reviewedUnit: item.reviewedUnit,
-      })),
+        estimatedCalories: estimate?.calories ?? null,
+        estimatedProteinGrams: estimate?.proteinGrams ?? null,
+        estimatedCarbohydrateGrams: estimate?.carbohydrateGrams ?? null,
+        estimatedFatGrams: estimate?.fatGrams ?? null,
+      };
+      }),
     }))} />
   </main>;
 }

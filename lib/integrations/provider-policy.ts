@@ -34,6 +34,17 @@ export function openFoodFactsSearchPolicy(): ProviderPolicy {
   };
 }
 
+export function usdaFoodDataPolicy(): ProviderPolicy {
+  return {
+    timeoutMs: positiveInteger(process.env.USDA_FDC_TIMEOUT_MS, 7_000, 30_000),
+    maxAttempts: positiveInteger(process.env.USDA_FDC_MAX_ATTEMPTS, 2, 3),
+    baseDelayMs: positiveInteger(process.env.USDA_FDC_RETRY_BASE_MS, 200, 5_000),
+    circuitFailureThreshold: positiveInteger(process.env.USDA_FDC_CIRCUIT_FAILURES, 4, 20),
+    circuitResetMs: positiveInteger(process.env.USDA_FDC_CIRCUIT_RESET_MS, 60_000, 3_600_000),
+    quotaPerMinute: positiveInteger(process.env.USDA_FDC_QUOTA_PER_MINUTE, 30, 60),
+  };
+}
+
 export function shouldRetryProviderStatus(status: number) {
   return status === 408 || status === 429 || status >= 500;
 }
