@@ -21,6 +21,15 @@ describe("trusted mutation origins", () => {
     expect(hasTrustedOrigin(new NextRequest("https://easyfit.test/api/value", { method: "POST" }))).toBe(false);
   });
 
+  it("accepts same-origin mutations without deployment-specific configuration", () => {
+    delete process.env.APP_URL;
+    delete process.env.ALLOWED_ORIGINS;
+    expect(hasTrustedOrigin(new NextRequest("https://easy-fit-phi.vercel.app/api/value", {
+      method: "POST",
+      headers: { origin: "https://easy-fit-phi.vercel.app" },
+    }))).toBe(true);
+  });
+
   it("accepts configured canonical and preview origins but rejects others", () => {
     process.env.APP_URL = "https://easyfit.example";
     process.env.ALLOWED_ORIGINS = "https://preview.easyfit.example";
