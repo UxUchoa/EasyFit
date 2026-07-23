@@ -26,10 +26,10 @@ const profile: GenerationProfile = {
 };
 
 const splitCatalog: GenerationExercise[] = [
-  ['Peito 1', 'Peito'], ['Peito 2', 'Peito'], ['Peito 3', 'Peito'],
-  ['Tríceps 1', 'Tríceps'], ['Tríceps 2', 'Tríceps'], ['Tríceps 3', 'Tríceps'],
-  ['Costas 1', 'Costas'], ['Costas 2', 'Costas'], ['Costas 3', 'Costas'],
-  ['Bíceps 1', 'Bíceps'], ['Bíceps 2', 'Bíceps'], ['Bíceps 3', 'Bíceps'],
+  ['Peito 1', 'Peito'], ['Peito 2', 'Peito'], ['Peito 3', 'Peito'], ['Peito 4', 'Peito'],
+  ['Tríceps 1', 'Tríceps'], ['Tríceps 2', 'Tríceps'], ['Tríceps 3', 'Tríceps'], ['Tríceps 4', 'Tríceps'],
+  ['Costas 1', 'Costas'], ['Costas 2', 'Costas'], ['Costas 3', 'Costas'], ['Costas 4', 'Costas'],
+  ['Bíceps 1', 'Bíceps'], ['Bíceps 2', 'Bíceps'], ['Bíceps 3', 'Bíceps'], ['Bíceps 4', 'Bíceps'],
   ['Agachamento teste', 'Pernas'], ['Leg press teste', 'Pernas'], ['Cadeira extensora teste', 'Pernas'],
   ['Stiff teste', 'Pernas'], ['Mesa flexora teste', 'Pernas'], ['Cadeira flexora teste', 'Pernas'],
   ['Glúteos 1', 'Glúteos'], ['Glúteos 2', 'Glúteos'], ['Glúteos 3', 'Glúteos'],
@@ -95,13 +95,27 @@ describe('versioned workout generator', () => {
       { id: 'triceps-1', name: 'Tríceps no cabo', muscleGroup: 'Tríceps', equipment: 'Cabos' },
       { id: 'chest-2', name: 'Supino máquina', muscleGroup: 'Peito', equipment: 'Máquinas' },
       { id: 'triceps-2', name: 'Tríceps corda', muscleGroup: 'Tríceps', equipment: 'Cabos' },
+      { id: 'triceps-3', name: 'Tríceps máquina', muscleGroup: 'Tríceps', equipment: 'Máquinas' },
+      { id: 'triceps-4', name: 'Tríceps acima da cabeça no cabo', muscleGroup: 'Tríceps', equipment: 'Cabos' },
       { id: 'chest-3', name: 'Supino inclinado com halteres', muscleGroup: 'Peito', equipment: 'Halteres' },
       { id: 'chest-4', name: 'Peck deck', muscleGroup: 'Peito', equipment: 'Máquinas' },
     ];
     const result = generateWorkoutProposal(profile, orderedCatalog, { division: 'ABCD', focus: 'HYPERTROPHY' });
     const dayA = result.exercises.filter((exercise) => exercise.dayIndex === 0);
-    expect(dayA.map((exercise) => exercise.muscleGroup)).toEqual(['Peito', 'Peito', 'Peito', 'Peito', 'Tríceps', 'Tríceps']);
-    expect(dayA.slice(0, 3).map((exercise) => exercise.name)).toEqual(['Supino máquina', 'Supino inclinado com halteres', 'Supino reto']);
+    expect(dayA.map((exercise) => exercise.muscleGroup)).toEqual(['Peito', 'Peito', 'Peito', 'Peito', 'Tríceps', 'Tríceps', 'Tríceps', 'Tríceps']);
+    expect(dayA.slice(0, 3).map((exercise) => exercise.name)).toEqual(['Supino reto', 'Supino inclinado com halteres', 'Supino máquina']);
+  });
+
+  it('balances an ABCD back and biceps day and increases direct biceps sets when prioritized', () => {
+    const result = generateWorkoutProposal(
+      { ...profile, priorityMuscleGroups: ['Bíceps'] },
+      splitCatalog,
+      { division: 'ABCD', focus: 'HYPERTROPHY' },
+    );
+    const dayB = result.exercises.filter((exercise) => exercise.dayIndex === 1);
+    expect(dayB.filter((exercise) => exercise.muscleGroup === 'Costas')).toHaveLength(4);
+    expect(dayB.filter((exercise) => exercise.muscleGroup === 'Bíceps')).toHaveLength(4);
+    expect(dayB.filter((exercise) => exercise.muscleGroup === 'Bíceps').every((exercise) => exercise.targetSets === 4)).toBe(true);
   });
 
   it.each(['AB', 'ABC', 'ABCD', 'ABCDE'] as const)('never returns to a muscle group after leaving its block in %s', (division) => {
@@ -144,7 +158,7 @@ describe('versioned workout generator', () => {
 
   it('prioritizes familiar network-gym exercises for the chosen focus', () => {
     const result = generateWorkoutProposal(profile, catalog, { division: 'ABC', focus: 'HYPERTROPHY' });
-    expect(result.exercises.find((exercise) => exercise.dayIndex === 0 && exercise.muscleGroup === 'Peito')?.name).toBe('Supino máquina');
+    expect(result.exercises.find((exercise) => exercise.dayIndex === 0 && exercise.muscleGroup === 'Peito')?.name).toBe('Supino reto');
     expect(result.exercises.find((exercise) => exercise.dayIndex === 1 && exercise.muscleGroup === 'Costas')?.name).toBe('Remada baixa');
   });
 });

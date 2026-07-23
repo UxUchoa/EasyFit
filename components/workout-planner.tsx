@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { FormEvent, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { closestCenter, DndContext, KeyboardSensor, MouseSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 type CatalogExercise = {
   id: string;
@@ -34,6 +37,7 @@ type WorkoutFocus = "STRENGTH" | "HYPERTROPHY";
 type GenerationDivision = "FULL_BODY" | "AB" | "ABC" | "ABCD" | "ABCDE";
 
 type DraftExercise = {
+  draftId: string;
   exerciseId: string;
   name: string;
   dayIndex: number;
@@ -41,6 +45,10 @@ type DraftExercise = {
   targetReps: string;
   restSeconds: number;
 };
+
+function createDraftId() {
+  return crypto.randomUUID();
+}
 
 const DIVISION_DAY_LABELS: Record<string, string[]> = {
   AB: ["Superiores", "Inferiores completos"],
@@ -70,6 +78,64 @@ function savedFocus(inputs: unknown) {
   return focus === "STRENGTH" || focus === "HYPERTROPHY" ? focusLabel(focus) : null;
 }
 
+function SortableDraftExercise({
+  item,
+  index,
+  positionInDay,
+  totalInDay,
+  update,
+  remove,
+  move,
+}: {
+  item: DraftExercise;
+  index: number;
+  positionInDay: number;
+  totalInDay: number;
+  update: (index: number, update: Partial<DraftExercise>) => void;
+  remove: (draftId: string) => void;
+  move: (draftId: string, direction: -1 | 1) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.draftId });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 10 : undefined }}
+      className={`rounded-2xl border bg-white p-4 ${isDragging ? "border-[#166534] opacity-80 shadow-xl" : "border-[#dfe5dc]"}`}
+      data-testid={`draft-exercise-${item.draftId}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2">
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            aria-label={`Arrastar ${item.name} para reordenar`}
+            className="flex min-h-11 min-w-11 touch-none cursor-grab items-center justify-center rounded-xl border border-[#dfe5dc] bg-[#f4f6f1] text-xl font-black text-[#52604e] active:cursor-grabbing"
+          >
+            <span aria-hidden="true">⠿</span>
+          </button>
+          <div className="min-w-0 pt-1">
+            <p className="text-xs font-bold text-[#657168]">Exercício {positionInDay + 1}</p>
+            <h3 className="truncate font-black">{item.name}</h3>
+          </div>
+        </div>
+        <button type="button" className="min-h-11 px-2 text-xs font-bold text-[#b42318]" onClick={() => remove(item.draftId)}>Remover</button>
+      </div>
+      <div className="mt-3 flex items-center gap-2" aria-label={`Ordenação de ${item.name}`}>
+        <button type="button" className="rounded-xl border border-[#dfe5dc] px-3 py-2 text-xs font-bold disabled:opacity-40" disabled={positionInDay === 0} onClick={() => move(item.draftId, -1)} aria-label={`Mover ${item.name} para cima`}>↑ Subir</button>
+        <button type="button" className="rounded-xl border border-[#dfe5dc] px-3 py-2 text-xs font-bold disabled:opacity-40" disabled={positionInDay === totalInDay - 1} onClick={() => move(item.draftId, 1)} aria-label={`Mover ${item.name} para baixo`}>↓ Descer</button>
+        <span className="ml-auto text-xs text-[#657168]">Arraste pela alça</span>
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="field"><label htmlFor={`day-${item.draftId}`}>Dia</label><input id={`day-${item.draftId}`} type="number" min="1" max="7" value={item.dayIndex + 1} onChange={(event) => update(index, { dayIndex: Number(event.target.value) - 1 })} /></div>
+        <div className="field"><label htmlFor={`sets-${item.draftId}`}>Séries</label><input id={`sets-${item.draftId}`} type="number" min="1" max="12" value={item.targetSets} onChange={(event) => update(index, { targetSets: Number(event.target.value) })} /></div>
+        <div className="field"><label htmlFor={`reps-${item.draftId}`}>Repetições</label><input id={`reps-${item.draftId}`} value={item.targetReps} maxLength={40} onChange={(event) => update(index, { targetReps: event.target.value })} /></div>
+        <div className="field"><label htmlFor={`rest-${item.draftId}`}>Descanso (s)</label><input id={`rest-${item.draftId}`} type="number" min="15" max="900" step="5" value={item.restSeconds} onChange={(event) => update(index, { restSeconds: Number(event.target.value) })} /></div>
+      </div>
+    </div>
+  );
+}
+
 export function WorkoutPlanner({
   exercises,
   plans,
@@ -83,6 +149,11 @@ export function WorkoutPlanner({
 }) {
   const router = useRouter();
   const workoutImportRef = useRef<HTMLInputElement>(null);
+  const dragSensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [planName, setPlanName] = useState("");
@@ -102,11 +173,13 @@ export function WorkoutPlanner({
     if (query.length < 2) return [];
     return exercises.filter((exercise) => normalizedSearch(`${exercise.name} ${exercise.muscleGroup} ${exercise.equipment ?? ""}`).includes(query)).slice(0, 12);
   }, [exerciseQuery, exercises]);
+  const draftDays = useMemo(() => [...new Set(draft.map((item) => item.dayIndex))].sort((left, right) => left - right), [draft]);
 
   function addExercise(exercise: CatalogExercise) {
     setDraft((current) => [
       ...current,
       {
+        draftId: createDraftId(),
         exerciseId: exercise.id,
         name: exercise.name,
         dayIndex: 0,
@@ -121,6 +194,32 @@ export function WorkoutPlanner({
     setDraft((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...update } : item));
   }
 
+  function removeDraft(draftId: string) {
+    setDraft((current) => current.filter((item) => item.draftId !== draftId));
+  }
+
+  function moveDraftWithinDay(draftId: string, direction: -1 | 1) {
+    setDraft((current) => {
+      const currentIndex = current.findIndex((item) => item.draftId === draftId);
+      if (currentIndex < 0) return current;
+      const dayIndexes = current.map((item, index) => item.dayIndex === current[currentIndex].dayIndex ? index : -1).filter((index) => index >= 0);
+      const positionInDay = dayIndexes.indexOf(currentIndex);
+      const targetIndex = dayIndexes[positionInDay + direction];
+      return targetIndex === undefined ? current : arrayMove(current, currentIndex, targetIndex);
+    });
+  }
+
+  function finishDrag(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setDraft((current) => {
+      const currentIndex = current.findIndex((item) => item.draftId === active.id);
+      const targetIndex = current.findIndex((item) => item.draftId === over.id);
+      if (currentIndex < 0 || targetIndex < 0 || current[currentIndex].dayIndex !== current[targetIndex].dayIndex) return current;
+      return arrayMove(current, currentIndex, targetIndex);
+    });
+  }
+
   function editPlan(plan: WorkoutPlan) {
     const version = plan.versions[0];
     setEditingId(plan.id);
@@ -128,6 +227,7 @@ export function WorkoutPlanner({
     setDivision(plan.division);
     setDraft(
       (version?.exercises ?? []).map((item) => ({
+        draftId: createDraftId(),
         exerciseId: item.exerciseId,
         name: item.exercise.name,
         dayIndex: item.dayIndex,
@@ -208,7 +308,7 @@ export function WorkoutPlanner({
       setDivision(result.proposal.division);
       setGenerationDivision(result.proposal.division);
       setWorkoutFocus(result.proposal.focus);
-      setDraft(result.proposal.exercises.map((exercise) => ({ exerciseId: exercise.id, name: exercise.name, dayIndex: exercise.dayIndex, targetSets: exercise.targetSets, targetReps: exercise.targetReps, restSeconds: exercise.restSeconds })));
+      setDraft(result.proposal.exercises.map((exercise) => ({ draftId: createDraftId(), exerciseId: exercise.id, name: exercise.name, dayIndex: exercise.dayIndex, targetSets: exercise.targetSets, targetReps: exercise.targetReps, restSeconds: exercise.restSeconds })));
       setGeneration({ ruleVersion: result.proposal.ruleVersion, division: result.proposal.division, focus: result.proposal.focus, warnings: result.proposal.warnings, dayLabels: result.proposal.dayLabels });
       setImportReview(null);
       setExerciseQuery("");
@@ -245,7 +345,7 @@ export function WorkoutPlanner({
       setEditingId(null);
       setPlanName(result.proposal.name);
       setDivision(result.proposal.division);
-      setDraft(result.proposal.exercises);
+      setDraft(result.proposal.exercises.map((exercise) => ({ ...exercise, draftId: createDraftId() })));
       setGeneration(null);
       setExerciseQuery("");
       setImportReview({ filename: file.name, dayLabels: result.proposal.dayLabels });
@@ -370,21 +470,23 @@ export function WorkoutPlanner({
       
             {draft.length > 0 && (
               <div className="grid gap-3">
-                <p className="text-sm font-black">Seu plano · {draft.length} {draft.length === 1 ? "exercício" : "exercícios"}</p>
-                {draft.map((item, index) => (
-                  <div key={`${item.exerciseId}-${index}`} className="rounded-2xl border border-[#dfe5dc] p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <h3 className="font-black">{item.name}</h3>
-                      <button type="button" className="text-xs font-bold text-[#b42318]" onClick={() => setDraft((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remover</button>
-                    </div>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                      <div className="field"><label htmlFor={`day-${index}`}>Dia</label><input id={`day-${index}`} type="number" min="1" max="7" value={item.dayIndex + 1} onChange={(event) => updateDraft(index, { dayIndex: Number(event.target.value) - 1 })} /></div>
-                      <div className="field"><label htmlFor={`sets-${index}`}>Séries</label><input id={`sets-${index}`} type="number" min="1" max="12" value={item.targetSets} onChange={(event) => updateDraft(index, { targetSets: Number(event.target.value) })} /></div>
-                      <div className="field"><label htmlFor={`reps-${index}`}>Repetições</label><input id={`reps-${index}`} value={item.targetReps} maxLength={40} onChange={(event) => updateDraft(index, { targetReps: event.target.value })} /></div>
-                      <div className="field"><label htmlFor={`rest-${index}`}>Descanso (s)</label><input id={`rest-${index}`} type="number" min="15" max="900" step="5" value={item.restSeconds} onChange={(event) => updateDraft(index, { restSeconds: Number(event.target.value) })} /></div>
-                    </div>
-                  </div>
-                ))}
+                <div><p className="text-sm font-black">Seu plano · {draft.length} {draft.length === 1 ? "exercício" : "exercícios"}</p><p className="mt-1 text-xs leading-5 text-[#657168]">Segure a alça ⠿ e arraste para ordenar dentro do dia. No celular, você também pode usar “Subir” e “Descer”.</p></div>
+                <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={finishDrag}>
+                  {draftDays.map((dayIndex) => {
+                    const dayItems = draft.filter((item) => item.dayIndex === dayIndex);
+                    return (
+                      <section key={dayIndex} className="grid gap-3 rounded-3xl bg-[#f4f6f1] p-3 sm:p-4" aria-labelledby={`draft-day-${dayIndex}`}>
+                        <div className="flex items-center justify-between gap-3 px-1"><h3 id={`draft-day-${dayIndex}`} className="font-black">{workoutDayLabel(division, dayIndex)}</h3><span className="text-xs font-bold text-[#657168]">{dayItems.length} {dayItems.length === 1 ? "exercício" : "exercícios"}</span></div>
+                        <SortableContext items={dayItems.map((item) => item.draftId)} strategy={verticalListSortingStrategy}>
+                          {dayItems.map((item, positionInDay) => {
+                            const index = draft.findIndex((candidate) => candidate.draftId === item.draftId);
+                            return <SortableDraftExercise key={item.draftId} item={item} index={index} positionInDay={positionInDay} totalInDay={dayItems.length} update={updateDraft} remove={removeDraft} move={moveDraftWithinDay} />;
+                          })}
+                        </SortableContext>
+                      </section>
+                    );
+                  })}
+                </DndContext>
               </div>
             )}
       

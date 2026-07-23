@@ -44,7 +44,8 @@ describe("exercise catalog loading", () => {
 
   it("contains familiar exercises found in network gyms", () => {
     const names = new Set(EXERCISE_CATALOG.map((exercise) => exercise.name));
-    expect([...names]).toEqual(expect.arrayContaining(["Leg press 45°", "Cadeira extensora", "Panturrilha em pé na máquina", "Puxada alta", "Remada baixa", "Supino máquina", "Tríceps corda"]));
+    expect(EXERCISE_CATALOG.length).toBeGreaterThanOrEqual(100);
+    expect([...names]).toEqual(expect.arrayContaining(["Crucifixo máquina", "Leg press 45°", "Cadeira extensora", "Panturrilha em pé na máquina", "Puxada alta", "Remada baixa", "Rosca máquina", "Supino máquina", "Tríceps acima da cabeça no cabo", "Tríceps máquina", "Tríceps corda"]));
   });
 
   it("keeps the legacy starter template free of core exercises", () => {
