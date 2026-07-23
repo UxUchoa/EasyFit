@@ -1,0 +1,19 @@
+{
+  "name": "EasyFit",
+  "short_name": "EasyFit",
+  "description": "Alimentação, metas corporais e treino em um só lugar.",
+  "lang": "pt-BR",
+  "start_url": "/hoje",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f7f2",
+  "theme_color": "#166534",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

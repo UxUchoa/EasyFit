@@ -1,0 +1,34 @@
+'use client';
+
+import { useState, type FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
+
+type Access = { id: string; targetUsername: string; reason: string; scopes: string[]; createdAt: string; expiresAt: string; revokedAt: string | null; consulted: Array<{ objectType: string; objectId: string; consultedAt: string }> };
+type Summary = { account: { username: string; createdAt: string; onboardingDone: boolean } | null; imports: Array<{ id: string; status: string; createdAt: string; attemptCount: number; parserVersion: string }> };
+
+async function jsonRequest(url: string, init: RequestInit) {
+  const response = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init.headers } });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) { const error = new Error(body.error ?? 'Operação não concluída.') as Error & { reauthenticationRequired?: boolean }; error.reauthenticationRequired = body.reauthenticationRequired; throw error; }
+  return body;
+}
+
+export function AdminAccessManager({ access }: { access: Access[] }) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false); const [message, setMessage] = useState(''); const [error, setError] = useState(false); const [needsPassword, setNeedsPassword] = useState(false); const [summary, setSummary] = useState<Record<string, Summary>>({});
+  async function requestAccess(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const data = new FormData(event.currentTarget); const scopes = ['ACCOUNT_METADATA', 'IMPORT_STATUS'].filter((scope) => data.get(scope));
+    setPending(true); setError(false); setMessage('Solicitando acesso…');
+    try { await jsonRequest('/api/admin/support-access', { method: 'POST', body: JSON.stringify({ username: data.get('username'), reason: data.get('reason'), scopes }) }); setMessage('Acesso temporário concedido por 15 minutos.'); setNeedsPassword(false); router.refresh(); }
+    catch (caught) { const issue = caught as Error & { reauthenticationRequired?: boolean }; setError(true); setNeedsPassword(Boolean(issue.reauthenticationRequired)); setMessage(issue.message); }
+    finally { setPending(false); }
+  }
+  async function reauthenticate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const password = String(new FormData(event.currentTarget).get('password') ?? ''); setPending(true); setError(false);
+    try { await jsonRequest('/api/auth/reauth', { method: 'POST', body: JSON.stringify({ password }) }); setNeedsPassword(false); setMessage('Senha confirmada. Envie novamente a solicitação de acesso.'); (event.currentTarget as HTMLFormElement).reset(); }
+    catch (caught) { setError(true); setMessage(caught instanceof Error ? caught.message : 'Senha não confirmada.'); } finally { setPending(false); }
+  }
+  async function consult(id: string) { setPending(true); setError(false); try { const body = await jsonRequest(`/api/admin/support-access/${id}/summary`, { method: 'GET' }); setSummary((current) => ({ ...current, [id]: body })); setMessage('Resumo consultado e objetos registrados na trilha.'); router.refresh(); } catch (caught) { setError(true); setMessage(caught instanceof Error ? caught.message : 'Consulta indisponível.'); } finally { setPending(false); } }
+  async function revoke(id: string) { setPending(true); setError(false); try { await jsonRequest(`/api/admin/support-access/${id}`, { method: 'DELETE' }); setMessage('Acesso revogado.'); router.refresh(); } catch (caught) { setError(true); setMessage(caught instanceof Error ? caught.message : 'Revogação indisponível.'); } finally { setPending(false); } }
+  return <section className='mt-7'><h2 className='text-2xl font-black'>Acesso excepcional</h2><div className='card mt-4 p-6'><form onSubmit={requestAccess} className='grid gap-4 sm:grid-cols-2'><div className='field'><label htmlFor='support-username'>ID da conta</label><input id='support-username' name='username' minLength={3} maxLength={40} required /></div><div className='field sm:col-span-2'><label htmlFor='support-reason'>Justificativa operacional</label><textarea id='support-reason' name='reason' minLength={20} maxLength={500} required /></div><fieldset className='sm:col-span-2'><legend className='font-black'>Escopos mínimos</legend><label className='mt-2 flex gap-2 text-sm'><input type='checkbox' name='ACCOUNT_METADATA' />Metadados da conta</label><label className='mt-2 flex gap-2 text-sm'><input type='checkbox' name='IMPORT_STATUS' />Status das importações</label></fieldset><button className='button-primary w-fit' disabled={pending}>{pending ? 'Aguarde…' : 'Solicitar por 15 minutos'}</button></form>{needsPassword && <form className='mt-5 rounded-2xl border border-[#eadc9c] bg-[#fffbed] p-4' onSubmit={reauthenticate}><div className='field'><label htmlFor='support-password'>Confirme sua senha</label><input id='support-password' name='password' type='password' autoComplete='current-password' required /></div><button className='button-secondary mt-3' disabled={pending}>Confirmar senha</button></form>}</div><p role='status' aria-live='polite' className={'mt-3 min-h-5 text-sm font-bold ' + (error ? 'text-[#b42318]' : 'text-[#166534]')}>{message}</p><div className='mt-4 space-y-4'>{access.map((item) => { const active = !item.revokedAt && new Date(item.expiresAt) > new Date(); const detail = summary[item.id]; return <article className='card p-5' key={item.id}><div className='flex flex-wrap justify-between gap-3'><div><h3 className='font-black'>{item.targetUsername}</h3><p className='mt-1 text-sm text-[#657168]'>{item.scopes.join(' · ')} · expira {new Date(item.expiresAt).toLocaleString('pt-BR')}</p></div><span className='text-sm font-black'>{active ? 'Ativo' : item.revokedAt ? 'Revogado' : 'Expirado'}</span></div><p className='mt-3 text-sm'><strong>Motivo:</strong> {item.reason}</p>{active && <div className='mt-4 flex flex-wrap gap-3'><button className='button-secondary' disabled={pending} onClick={() => consult(item.id)}>Consultar resumo autorizado</button><button className='button-secondary' disabled={pending} onClick={() => revoke(item.id)}>Revogar agora</button></div>}{detail && <div className='mt-4 rounded-2xl bg-[#f4f6f1] p-4 text-sm'><p><strong>Conta:</strong> {detail.account ? `${detail.account.username} · criada em ${new Date(detail.account.createdAt).toLocaleDateString('pt-BR')} · onboarding ${detail.account.onboardingDone ? 'concluído' : 'pendente'}` : 'fora do escopo'}</p><p className='mt-2'><strong>Importações:</strong> {detail.imports.length ? detail.imports.map((job) => `${job.status} (${job.attemptCount} tentativa(s))`).join(' · ') : 'nenhuma ou fora do escopo'}</p></div>}<p className='mt-3 text-xs text-[#657168]'>{item.consulted.length} consulta(s) de objeto já registrada(s).</p></article>; })}</div></section>;
+}

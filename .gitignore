@@ -1,0 +1,30 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# tests and builds
+/coverage
+/.next
+/out
+/dist
+/test-results
+/playwright-report
+
+# local configuration and secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# deployment and tooling
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+# operating systems and editors
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+*.log

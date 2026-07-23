@@ -1,0 +1,703 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GoalMode {
+  AUTOMATIC
+  MANUAL
+}
+
+enum MealKind {
+  BREAKFAST
+  MORNING_SNACK
+  LUNCH
+  AFTERNOON_SNACK
+  DINNER
+  SUPPER
+  CUSTOM
+}
+
+enum EntryKind {
+  PLANNED
+  CONSUMED
+}
+
+enum WorkoutStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum SubjectRequestKind {
+  EXPORT
+  DELETION
+}
+
+enum SubjectRequestStatus {
+  REQUESTED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ImportJobStatus {
+  PENDING
+  PROCESSING
+  REVIEW
+  FAILED
+  COMPLETED
+  CANCELLED
+}
+
+enum ImportItemDecision {
+  PENDING
+  KEEP
+  REPLACE
+  IGNORE
+  MANUAL
+}
+
+enum UserRole {
+  USER
+  SUPPORT
+  ADMIN
+}
+
+enum SupportAccessScope {
+  ACCOUNT_METADATA
+  IMPORT_STATUS
+}
+
+model User {
+  id                      String                   @id @default(cuid())
+  username                String                   @unique @db.VarChar(40)
+  passwordHash            String
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  onboardingDone          Boolean                  @default(false)
+  role                    UserRole                 @default(USER)
+  profile                 Profile?
+  sessions                Session[]
+  goals                   GoalPlan[]
+  dayLogs                 DayLog[]
+  privateFoods            Food[]
+  workoutPlans            WorkoutPlan[]
+  workoutSessions         WorkoutSession[]
+  consents                ConsentRecord[]
+  subjectRequests         SubjectRequest[]
+  foodFavorites           FoodFavorite[]
+  savedMeals              SavedMeal[]
+  bodyMeasurements        BodyMeasurement[]
+  notificationPreferences NotificationPreference[]
+  notificationSettings    NotificationSettings?
+  mealEntryRevisions      MealEntryRevision[]
+  importJobs              ImportJob[]
+  dietPlans               DietPlan[]
+  supportAccessAsOperator SupportAccess[]          @relation("SupportAccessOperator")
+  supportAccessAsTarget   SupportAccess[]          @relation("SupportAccessTarget")
+  foodSourceChoices       FoodSourceChoice[]
+}
+
+model Session {
+  id                String    @id @default(cuid())
+  userId            String
+  tokenHash         String    @unique
+  userAgent         String?   @db.VarChar(500)
+  ipPrefix          String?   @db.VarChar(64)
+  countryCode       String?   @db.VarChar(8)
+  region            String?   @db.VarChar(80)
+  city              String?   @db.VarChar(120)
+  createdAt         DateTime  @default(now())
+  rotatedAt         DateTime  @default(now())
+  lastActiveAt      DateTime  @default(now())
+  reauthenticatedAt DateTime?
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, expiresAt])
+}
+
+model RateLimitBucket {
+  keyHash   String   @id @db.VarChar(64)
+  attempts  Int
+  resetAt   DateTime
+  updatedAt DateTime @updatedAt
+
+  @@index([resetAt])
+}
+
+model ExternalProviderState {
+  provider             String    @id @db.VarChar(64)
+  consecutiveFailures  Int       @default(0)
+  circuitOpenUntil     DateTime?
+  quotaWindowStartedAt DateTime
+  requestCount         Int       @default(0)
+  updatedAt            DateTime  @updatedAt
+
+  @@index([circuitOpenUntil])
+}
+
+model OperationalMetric {
+  id             String   @id @default(cuid())
+  metric         String   @db.VarChar(80)
+  outcome        String   @db.VarChar(32)
+  dimension      String   @default("all") @db.VarChar(80)
+  bucketStart    DateTime
+  latencyUpperMs Int
+  count          Int      @default(0)
+  totalDurationMs Int     @default(0)
+  maxDurationMs  Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([metric, outcome, dimension, bucketStart, latencyUpperMs])
+  @@index([bucketStart, metric])
+}
+
+model Profile {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  displayName          String   @db.VarChar(80)
+  birthDate            DateTime @db.Date
+  biologicalSex        String   @db.VarChar(24)
+  heightCm             Decimal  @db.Decimal(5, 2)
+  currentWeightKg      Decimal  @db.Decimal(6, 2)
+  desiredWeightKg      Decimal  @db.Decimal(6, 2)
+  activityLevel        String   @db.VarChar(32)
+  objective            String   @db.VarChar(32)
+  trainingExperience   String   @db.VarChar(32)
+  trainingDaysPerWeek  Int
+  physicalRestrictions String?  @db.VarChar(1000)
+  availableEquipment   String[] @default([])
+  priorityMuscleGroups String[] @default([])
+  timezone             String   @default("America/Sao_Paulo") @db.VarChar(64)
+  dayClosesAtMinutes   Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BodyMeasurement {
+  id         String   @id @default(cuid())
+  userId     String
+  measuredAt DateTime @db.Date
+  weightKg   Decimal  @db.Decimal(6, 2)
+  waistCm    Decimal? @db.Decimal(6, 2)
+  hipCm      Decimal? @db.Decimal(6, 2)
+  chestCm    Decimal? @db.Decimal(6, 2)
+  armCm      Decimal? @db.Decimal(6, 2)
+  thighCm    Decimal? @db.Decimal(6, 2)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, measuredAt])
+  @@index([userId, measuredAt])
+}
+
+model NotificationPreference {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String   @db.VarChar(24)
+  enabled     Boolean  @default(false)
+  timeMinutes Int
+  weekdays    Int[]    @default([])
+  channel     String   @default("IN_APP") @db.VarChar(16)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@index([userId, enabled])
+}
+
+model NotificationSettings {
+  userId            String   @id
+  quietStartMinutes Int?
+  quietEndMinutes   Int?
+  pushPermission    String   @default("default") @db.VarChar(16)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model GoalPlan {
+  id                String    @id @default(cuid())
+  userId            String
+  mode              GoalMode
+  calorieTarget     Int
+  proteinGrams      Decimal   @db.Decimal(6, 2)
+  carbohydrateGrams Decimal   @db.Decimal(6, 2)
+  fatGrams          Decimal   @db.Decimal(6, 2)
+  validFrom         DateTime
+  validUntil        DateTime?
+  createdAt         DateTime  @default(now())
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayLogs           DayLog[]
+
+  @@index([userId, validFrom, validUntil])
+}
+
+model DayLog {
+  id          String           @id @default(cuid())
+  userId      String
+  logicalDate DateTime         @db.Date
+  timezone    String           @db.VarChar(64)
+  closedAt    DateTime?
+  goalPlanId  String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goalPlan    GoalPlan?        @relation(fields: [goalPlanId], references: [id], onDelete: SetNull)
+  meals       Meal[]
+  workouts    WorkoutSession[]
+
+  @@unique([userId, logicalDate])
+}
+
+model Meal {
+  id         String      @id @default(cuid())
+  dayLogId   String
+  kind       MealKind
+  slug       String      @db.VarChar(80)
+  customName String?     @db.VarChar(80)
+  position   Int
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  dayLog     DayLog      @relation(fields: [dayLogId], references: [id], onDelete: Cascade)
+  entries    MealEntry[]
+
+  @@unique([dayLogId, slug])
+  @@index([dayLogId, position])
+}
+
+model Food {
+  id                String         @id @default(cuid())
+  ownerId           String?
+  name              String         @db.VarChar(180)
+  brand             String?        @db.VarChar(120)
+  barcode           String?        @db.VarChar(32)
+  source            String         @db.VarChar(40)
+  sourceReference   String?        @db.VarChar(180)
+  sourceFetchedAt   DateTime?
+  sourceExpiresAt   DateTime?
+  baseQuantity      Decimal        @db.Decimal(10, 3)
+  baseUnit          String         @db.VarChar(16)
+  calories          Decimal        @db.Decimal(10, 3)
+  proteinGrams      Decimal?       @db.Decimal(10, 3)
+  carbohydrateGrams Decimal?       @db.Decimal(10, 3)
+  fatGrams          Decimal?       @db.Decimal(10, 3)
+  fiberGrams        Decimal?       @db.Decimal(10, 3)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  owner             User?          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  entries           MealEntry[]
+  portions          FoodPortion[]
+  favorites         FoodFavorite[]
+  sourceChoices     FoodSourceChoice[]
+
+  @@unique([barcode, source])
+  @@index([name])
+  @@index([barcode])
+  @@index([ownerId])
+}
+
+model FoodFavorite {
+  userId    String
+  foodId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  food      Food     @relation(fields: [foodId], references: [id], onDelete: Cascade)
+
+  @@id([userId, foodId])
+  @@index([userId, createdAt])
+}
+
+model FoodPortion {
+  id                 String  @id @default(cuid())
+  foodId             String
+  name               String  @db.VarChar(80)
+  unit               String  @db.VarChar(24)
+  quantityInBaseUnit Decimal @db.Decimal(10, 3)
+  food               Food    @relation(fields: [foodId], references: [id], onDelete: Cascade)
+
+  @@unique([foodId, name])
+}
+
+model FoodSourceChoice {
+  id                   String   @id @default(cuid())
+  userId               String
+  conflictKey          String   @db.VarChar(320)
+  selectedFoodId       String?
+  selectedSnapshotName String   @db.VarChar(180)
+  selectedSnapshotSource String @db.VarChar(40)
+  alternativesSnapshot Json
+  chosenAt             DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  selectedFood         Food?    @relation(fields: [selectedFoodId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, conflictKey])
+  @@index([selectedFoodId])
+}
+
+model MealEntry {
+  id                   String              @id @default(cuid())
+  clientMutationId     String?             @unique @db.VarChar(80)
+  mealId               String
+  foodId               String?
+  kind                 EntryKind
+  quantity             Decimal             @db.Decimal(10, 3)
+  unit                 String              @db.VarChar(16)
+  snapshotName         String              @db.VarChar(180)
+  snapshotBrand        String?             @db.VarChar(120)
+  snapshotSource       String              @db.VarChar(40)
+  snapshotCalories     Decimal             @db.Decimal(10, 3)
+  snapshotProtein      Decimal?            @db.Decimal(10, 3)
+  snapshotCarbohydrate Decimal?            @db.Decimal(10, 3)
+  snapshotFat          Decimal?            @db.Decimal(10, 3)
+  macrosComplete       Boolean             @default(true)
+  originEntryId        String?
+  copiedFromEntryId    String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  meal                 Meal                @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  food                 Food?               @relation(fields: [foodId], references: [id], onDelete: SetNull)
+  revisions            MealEntryRevision[]
+
+  @@unique([originEntryId, kind])
+  @@index([mealId, kind])
+  @@index([copiedFromEntryId])
+}
+
+model MealEntryRevision {
+  id                   String     @id @default(cuid())
+  userId               String
+  mealEntryId          String?
+  logicalDate          DateTime   @db.Date
+  reason               String?    @db.VarChar(160)
+  previousQuantity     Decimal    @db.Decimal(10, 3)
+  previousCalories     Decimal    @db.Decimal(10, 3)
+  previousProtein      Decimal?   @db.Decimal(10, 3)
+  previousCarbohydrate Decimal?   @db.Decimal(10, 3)
+  previousFat          Decimal?   @db.Decimal(10, 3)
+  nextQuantity         Decimal    @db.Decimal(10, 3)
+  nextCalories         Decimal    @db.Decimal(10, 3)
+  nextProtein          Decimal?   @db.Decimal(10, 3)
+  nextCarbohydrate     Decimal?   @db.Decimal(10, 3)
+  nextFat              Decimal?   @db.Decimal(10, 3)
+  correctedAt          DateTime   @default(now())
+  user                 User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mealEntry            MealEntry? @relation(fields: [mealEntryId], references: [id], onDelete: SetNull)
+
+  @@index([userId, logicalDate, correctedAt])
+  @@index([mealEntryId, correctedAt])
+}
+
+model SavedMeal {
+  id        String          @id @default(cuid())
+  userId    String
+  name      String          @db.VarChar(80)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     SavedMealItem[]
+
+  @@index([userId, updatedAt])
+}
+
+model SavedMealItem {
+  id                   String    @id @default(cuid())
+  savedMealId          String
+  position             Int
+  sourceMealEntryId    String?
+  quantity             Decimal   @db.Decimal(10, 3)
+  unit                 String    @db.VarChar(16)
+  snapshotName         String    @db.VarChar(180)
+  snapshotBrand        String?   @db.VarChar(120)
+  snapshotSource       String    @db.VarChar(40)
+  snapshotCalories     Decimal   @db.Decimal(10, 3)
+  snapshotProtein      Decimal?  @db.Decimal(10, 3)
+  snapshotCarbohydrate Decimal?  @db.Decimal(10, 3)
+  snapshotFat          Decimal?  @db.Decimal(10, 3)
+  macrosComplete       Boolean   @default(true)
+  savedMeal            SavedMeal @relation(fields: [savedMealId], references: [id], onDelete: Cascade)
+
+  @@unique([savedMealId, position])
+}
+
+model WorkoutPlan {
+  id        String               @id @default(cuid())
+  userId    String
+  name      String               @db.VarChar(120)
+  division  String               @default("CUSTOM") @db.VarChar(16)
+  active    Boolean              @default(true)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  versions  WorkoutPlanVersion[]
+  sessions  WorkoutSession[]
+
+  @@index([userId, active])
+}
+
+model WorkoutPlanVersion {
+  id                     String                @id @default(cuid())
+  planId                 String
+  version                Int
+  createdAt              DateTime              @default(now())
+  generatedByRuleVersion String?               @db.VarChar(64)
+  generationInputs       Json?
+  reviewedAt             DateTime?
+  plan                   WorkoutPlan           @relation(fields: [planId], references: [id], onDelete: Cascade)
+  exercises              WorkoutPlanExercise[]
+  sessions               WorkoutSession[]
+
+  @@unique([planId, version])
+}
+
+model Exercise {
+  id               String                   @id @default(cuid())
+  name             String                   @unique @db.VarChar(160)
+  muscleGroup      String                   @db.VarChar(80)
+  equipment        String?                  @db.VarChar(80)
+  instructions     String?                  @db.VarChar(2000)
+  createdAt        DateTime                 @default(now())
+  plans            WorkoutPlanExercise[]
+  sessionExercises WorkoutSessionExercise[]
+}
+
+model WorkoutPlanExercise {
+  id          String             @id @default(cuid())
+  versionId   String
+  exerciseId  String
+  dayIndex    Int
+  position    Int
+  targetSets  Int
+  targetReps  String             @db.VarChar(40)
+  restSeconds Int
+  version     WorkoutPlanVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  exercise    Exercise           @relation(fields: [exerciseId], references: [id], onDelete: Restrict)
+
+  @@unique([versionId, dayIndex, position])
+}
+
+model WorkoutSession {
+  id            String                   @id @default(cuid())
+  userId        String
+  dayLogId      String?
+  planId        String?
+  planVersionId String?
+  status        WorkoutStatus            @default(PLANNED)
+  name          String                   @db.VarChar(120)
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+  user          User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayLog        DayLog?                  @relation(fields: [dayLogId], references: [id], onDelete: SetNull)
+  plan          WorkoutPlan?             @relation(fields: [planId], references: [id], onDelete: SetNull)
+  planVersion   WorkoutPlanVersion?      @relation(fields: [planVersionId], references: [id], onDelete: SetNull)
+  exercises     WorkoutSessionExercise[]
+
+  @@index([userId, status])
+}
+
+model WorkoutSessionExercise {
+  id                            String         @id @default(cuid())
+  sessionId                     String
+  exerciseId                    String?
+  position                      Int
+  nameSnapshot                  String         @db.VarChar(160)
+  muscleSnapshot                String         @db.VarChar(80)
+  equipmentSnapshot             String?        @db.VarChar(80)
+  replacedFromExerciseId        String?
+  replacedFromNameSnapshot      String?        @db.VarChar(160)
+  replacedFromMuscleSnapshot    String?        @db.VarChar(80)
+  replacedFromEquipmentSnapshot String?        @db.VarChar(80)
+  substitutionReason            String?        @db.VarChar(32)
+  substitutedAt                 DateTime?
+  targetSets                    Int
+  targetReps                    String         @db.VarChar(40)
+  restSeconds                   Int
+  session                       WorkoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  exercise                      Exercise?      @relation(fields: [exerciseId], references: [id], onDelete: SetNull)
+  sets                          ExerciseSet[]
+
+  @@unique([sessionId, position])
+}
+
+model ExerciseSet {
+  id                String                 @id @default(cuid())
+  sessionExerciseId String
+  setNumber         Int
+  repetitions       Int?
+  weightKg          Decimal?               @db.Decimal(7, 2)
+  effortRpe         Decimal?               @db.Decimal(3, 1)
+  completedAt       DateTime?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  sessionExercise   WorkoutSessionExercise @relation(fields: [sessionExerciseId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionExerciseId, setNumber])
+}
+
+model ConsentRecord {
+  id          String    @id @default(cuid())
+  userId      String
+  purpose     String    @db.VarChar(80)
+  textVersion String    @db.VarChar(32)
+  acceptedAt  DateTime
+  revokedAt   DateTime?
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+}
+
+model SubjectRequest {
+  id            String               @id @default(cuid())
+  userId        String?
+  kind          SubjectRequestKind
+  status        SubjectRequestStatus @default(REQUESTED)
+  receiptCode   String               @unique @db.VarChar(40)
+  requestedAt   DateTime             @default(now())
+  completedAt   DateTime?
+  artifactKey   String?
+  expiresAt     DateTime?
+  failureReason String?              @db.VarChar(500)
+  resultSummary String?              @db.VarChar(500)
+  user          User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, requestedAt])
+}
+
+model ImportJob {
+  id                String          @id @default(cuid())
+  userId            String
+  status            ImportJobStatus @default(PENDING)
+  originalFilename  String          @db.VarChar(180)
+  mimeType          String          @db.VarChar(100)
+  byteSize          Int
+  contentSha256     String          @db.VarChar(64)
+  sourcePayload     Json
+  parserVersion     String          @db.VarChar(64)
+  attemptCount      Int             @default(0)
+  failureReason     String?         @db.VarChar(500)
+  startedAt         DateTime?
+  reviewReadyAt     DateTime?
+  completedAt       DateTime?
+  cancelledAt       DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items             ImportItem[]
+  dietPlan           DietPlan?
+
+  @@index([userId, createdAt])
+  @@index([status, updatedAt])
+}
+
+model ImportItem {
+  id                 String             @id @default(cuid())
+  importJobId        String
+  position           Int
+  dayLabel           String             @db.VarChar(80)
+  mealLabel          String             @db.VarChar(80)
+  extractedName      String             @db.VarChar(180)
+  extractedQuantity Decimal?           @db.Decimal(10, 3)
+  extractedUnit     String?            @db.VarChar(24)
+  sourcePointer      String             @db.VarChar(240)
+  confidence         Decimal            @db.Decimal(4, 3)
+  matchedFoodId      String?
+  matchedFoodName    String?            @db.VarChar(180)
+  matchedFoodSource  String?            @db.VarChar(40)
+  matchConfidence    Decimal?           @db.Decimal(4, 3)
+  decision           ImportItemDecision @default(PENDING)
+  reviewedName       String?            @db.VarChar(180)
+  reviewedQuantity   Decimal?           @db.Decimal(10, 3)
+  reviewedUnit       String?            @db.VarChar(24)
+  reviewedAt         DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  importJob          ImportJob          @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+
+  @@unique([importJobId, position])
+  @@index([importJobId, decision])
+}
+
+model DietPlan {
+  id                String            @id @default(cuid())
+  userId            String
+  name              String            @db.VarChar(120)
+  active            Boolean           @default(false)
+  sourceImportJobId String?            @unique
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceImportJob   ImportJob?         @relation(fields: [sourceImportJobId], references: [id], onDelete: SetNull)
+  versions          DietPlanVersion[]
+
+  @@index([userId, active])
+}
+
+model DietPlanVersion {
+  id          String   @id @default(cuid())
+  dietPlanId  String
+  version     Int
+  snapshot    Json
+  confirmedAt DateTime
+  createdAt   DateTime @default(now())
+  dietPlan    DietPlan @relation(fields: [dietPlanId], references: [id], onDelete: Cascade)
+
+  @@unique([dietPlanId, version])
+}
+
+model SupportAccess {
+  id             String               @id @default(cuid())
+  operatorUserId String?
+  targetUserId   String?
+  reason         String               @db.VarChar(500)
+  scopes         SupportAccessScope[]
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  createdAt      DateTime             @default(now())
+  operator       User?                @relation("SupportAccessOperator", fields: [operatorUserId], references: [id], onDelete: SetNull)
+  target         User?                @relation("SupportAccessTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+  consulted      SupportAccessObject[]
+
+  @@index([operatorUserId, expiresAt])
+  @@index([targetUserId, createdAt])
+}
+
+model SupportAccessObject {
+  id              String        @id @default(cuid())
+  supportAccessId String
+  objectType      String        @db.VarChar(80)
+  objectId        String        @db.VarChar(120)
+  consultedAt     DateTime      @default(now())
+  supportAccess   SupportAccess @relation(fields: [supportAccessId], references: [id], onDelete: Cascade)
+
+  @@index([supportAccessId, consultedAt])
+}
+
+model AuditEvent {
+  id            String   @id @default(cuid())
+  actorUserId   String?
+  action        String   @db.VarChar(100)
+  objectType    String?  @db.VarChar(80)
+  objectId      String?  @db.VarChar(120)
+  result        String   @db.VarChar(32)
+  correlationId String   @db.VarChar(64)
+  context       Json?
+  createdAt     DateTime @default(now())
+  @@index([actorUserId, createdAt])
+  @@index([correlationId])
+}
