@@ -41,4 +41,9 @@ describe("exercise catalog loading", () => {
     expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { name: EXERCISE_CATALOG[0].name } }));
     expect(mocks.transaction).toHaveBeenCalledOnce();
   });
+
+  it("contains familiar exercises found in network gyms", () => {
+    const names = new Set(EXERCISE_CATALOG.map((exercise) => exercise.name));
+    expect([...names]).toEqual(expect.arrayContaining(["Leg press 45°", "Cadeira extensora", "Puxada alta", "Remada baixa", "Supino máquina", "Tríceps corda"]));
+  });
 });

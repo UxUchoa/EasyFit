@@ -62,7 +62,7 @@ test('cadastro, onboarding e adição rápida preservam o fluxo principal', asyn
   await expect.poll(() => db.auditEvent.count({ where: { actorUserId: e2eUser.id, action: 'session.rotate', objectId: e2eSession.id } })).toBe(1);
   await expect(page.getByRole('heading', { name: 'Olá, Pessoa.' })).toBeVisible();
   await page.goto('/dieta');
-  await page.getByRole('button', { name: '+ Calorias' }).click();
+  await page.getByTestId('diary-action-quick').click();
   await page.getByLabel('Descrição').fill('Lanche automatizado');
   await page.getByLabel('Calorias (kcal)').fill('245');
   await page.getByRole('button', { name: 'Adicionar ao diário' }).click();
@@ -89,7 +89,7 @@ test('cadastro, onboarding e adição rápida preservam o fluxo principal', asyn
   await expect(savedEntry).toContainText('2 porção');
   expect(Number((await db.mealEntry.findUniqueOrThrow({ where: { id: offlineEntry.id } })).quantity)).toBe(2);
   await page.context().setOffline(true);
-  await page.getByRole('button', { name: '+ Calorias' }).click();
+  await page.getByTestId('diary-action-quick').click();
   await page.getByLabel('Descrição').fill('Lanche criado offline');
   await page.getByLabel('Calorias (kcal)').fill('180');
   await page.getByRole('button', { name: 'Adicionar ao diário' }).click();
@@ -103,23 +103,24 @@ test('cadastro, onboarding e adição rápida preservam o fluxo principal', asyn
     db.food.create({ data: { name: conflictName, source: 'TACO', baseQuantity: 100, baseUnit: 'g', calories: 130, proteinGrams: 2.5, carbohydrateGrams: 28, fatGrams: 0.3 } }),
     db.food.create({ data: { name: conflictName, source: 'USDA', baseQuantity: 100, baseUnit: 'g', calories: 125, proteinGrams: 2.7, carbohydrateGrams: 27, fatGrams: 0.4 } }),
   ]);
-  await page.getByRole('button', { name: 'Buscar' }).click();
-  const foodSearchForm = page.locator('form').filter({ has: page.getByLabel('Nome ou marca') });
-  await page.getByLabel('Nome ou marca').fill(conflictName);
-  await foodSearchForm.getByRole('button', { name: 'Buscar', exact: true }).click();
+  await page.getByTestId('diary-action-search').click();
+  const foodSearchForm = page.getByTestId('food-search-form');
+  await foodSearchForm.getByLabel('Pesquisar por nome ou marca').fill(conflictName);
+  await foodSearchForm.getByRole('button', { name: 'Pesquisar', exact: true }).click();
   const tacoAlternative = page.getByRole('article').filter({ hasText: conflictName }).filter({ hasText: 'Fonte: TACO' });
   await expect(tacoAlternative).toContainText('Conflito entre fontes');
   await expect(page.getByRole('article').filter({ hasText: conflictName }).filter({ hasText: 'Fonte: USDA' })).toContainText('Conflito entre fontes');
   await tacoAlternative.getByRole('button', { name: 'Escolher e adicionar' }).click();
-  await page.getByRole('button', { name: 'Buscar' }).click();
-  await page.getByLabel('Nome ou marca').fill(conflictName);
-  await foodSearchForm.getByRole('button', { name: 'Buscar', exact: true }).click();
+  await page.getByTestId('diary-action-search').click();
+  await foodSearchForm.getByLabel('Pesquisar por nome ou marca').fill(conflictName);
+  await foodSearchForm.getByRole('button', { name: 'Pesquisar', exact: true }).click();
   await expect(page.getByRole('article').filter({ hasText: conflictName }).filter({ hasText: 'Fonte: TACO' })).toContainText('Esta foi sua última escolha');
+  await page.getByRole('button', { name: 'Fechar e voltar para a dieta' }).click();
 
   let dialogOpened = false;
   page.on('dialog', async (dialog) => { dialogOpened = true; await dialog.dismiss(); });
   const inertMarkup = '<img src=x onerror=alert(1)>';
-  await page.getByRole('button', { name: '+ Calorias' }).click();
+  await page.getByTestId('diary-action-quick').click();
   await page.getByLabel('Descrição').fill(inertMarkup);
   await page.getByLabel('Calorias (kcal)').fill('1');
   await page.getByRole('button', { name: 'Adicionar ao diário' }).click();
@@ -129,7 +130,7 @@ test('cadastro, onboarding e adição rápida preservam o fluxo principal', asyn
 
   const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
   await page.goto('/dieta?date=' + yesterday);
-  await page.getByRole('button', { name: '+ Calorias' }).click();
+  await page.getByTestId('diary-action-quick').click();
   await page.getByLabel('Descrição').fill('Registro retroativo');
   await page.getByLabel('Calorias (kcal)').fill('100');
   await page.getByRole('button', { name: 'Adicionar ao diário' }).click();
@@ -208,22 +209,27 @@ test('cadastro, onboarding e adição rápida preservam o fluxo principal', asyn
   await expectNoSeriousAccessibilityViolations(page);
 
   await page.goto('/treino');
+  await expect(page.getByRole('button', { name: 'Usar template Full body' })).toHaveCount(0);
+  await page.getByLabel('Divisão do plano', { exact: true }).selectOption('ABCDE');
+  await page.getByLabel('Foco do treino', { exact: true }).selectOption('STRENGTH');
   await page.getByRole('button', { name: 'Gerar sugestão revisável' }).click();
   await expect(page.getByRole('heading', { name: 'Revisão obrigatória antes de ativar' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Revisão obrigatória antes de ativar' })).toContainText('Força');
+  await expect(page.getByRole('region', { name: 'Revisão obrigatória antes de ativar' })).toContainText('E · Braços e core');
   await page.getByLabel('Nome do plano').fill('Plano E2E revisado');
   await page.getByRole('button', { name: 'Salvar plano' }).click();
   const generatedPlan = page.getByRole('article').filter({ hasText: 'Plano E2E revisado' });
   await expect(generatedPlan.getByText(/Sugestão gerada pela regra/)).toBeVisible();
-  await generatedPlan.getByRole('button', { name: /Dia 1/ }).click();
+  await generatedPlan.getByTestId('workout-day-0').click();
   await expect(page).toHaveURL(/\/treino\/sessao\//);
   const firstExercise = page.getByRole('article').filter({ hasText: 'Exercício 1' });
   await firstExercise.getByRole('button', { name: 'Substituir exercício' }).click();
-  await firstExercise.getByRole('button', { name: /Avanço alternado/ }).click();
+  await firstExercise.getByTestId('workout-alternative').first().click();
   await expect(page.getByText(/Substituído de/)).toBeVisible();
   await page.goto('/relatorios');
-  await expect(page.getByRole('article').filter({ hasText: 'SESSÕES PREVISTAS' })).toContainText('1');
-  await expect(page.getByRole('article').filter({ hasText: 'INICIADAS' })).toContainText('1');
-  await expect(page.getByRole('article').filter({ hasText: 'ADERÊNCIA' })).toContainText('0%');
+  await expect(page.getByTestId('training-expected')).toContainText('1');
+  await expect(page.getByTestId('training-started')).toContainText('1');
+  await expect(page.getByTestId('training-adherence')).toContainText('0%');
 });
 
 test('login inválido não revela se o ID existe', async ({ page }) => {

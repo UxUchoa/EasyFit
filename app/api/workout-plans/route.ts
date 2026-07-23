@@ -7,9 +7,13 @@ import { workoutPlanSchema } from "@/lib/workout/schemas";
 
 export const runtime = "nodejs";
 
-function generationMetadata(ruleVersion: string | null | undefined, profile: NonNullable<Awaited<ReturnType<typeof getCurrentSession>>>['user']['profile']) {
+function generationMetadata(
+  ruleVersion: string | null | undefined,
+  profile: NonNullable<Awaited<ReturnType<typeof getCurrentSession>>>['user']['profile'],
+  selection: { division?: string | null; focus?: string | null },
+) {
   if (!ruleVersion || !profile) return { generatedByRuleVersion: null, generationInputs: undefined, reviewedAt: null };
-  return { generatedByRuleVersion: ruleVersion, generationInputs: { objective: profile.objective, trainingExperience: profile.trainingExperience, trainingDaysPerWeek: profile.trainingDaysPerWeek, hasPhysicalRestrictions: Boolean(profile.physicalRestrictions?.trim()), availableEquipment: profile.availableEquipment, priorityMuscleGroups: profile.priorityMuscleGroups }, reviewedAt: new Date() };
+  return { generatedByRuleVersion: ruleVersion, generationInputs: { objective: profile.objective, trainingExperience: profile.trainingExperience, trainingDaysPerWeek: profile.trainingDaysPerWeek, hasPhysicalRestrictions: Boolean(profile.physicalRestrictions?.trim()), availableEquipment: profile.availableEquipment, priorityMuscleGroups: profile.priorityMuscleGroups, selectedDivision: selection.division, focus: selection.focus }, reviewedAt: new Date() };
 }
 
 export async function GET() {
@@ -52,7 +56,7 @@ export async function POST(request: NextRequest) {
         userId: session.userId,
         name: parsed.data.name,
         division: parsed.data.division,
-        versions: { create: { version: 1, ...generationMetadata(parsed.data.generationRuleVersion, session.user.profile), exercises: { create: parsed.data.exercises } } },
+        versions: { create: { version: 1, ...generationMetadata(parsed.data.generationRuleVersion, session.user.profile, { division: parsed.data.generationDivision, focus: parsed.data.generationFocus }), exercises: { create: parsed.data.exercises } } },
       },
     });
     await tx.auditEvent.create({
@@ -63,7 +67,7 @@ export async function POST(request: NextRequest) {
         objectId: created.id,
         result: "SUCCESS",
         correlationId: randomUUID(),
-        context: { generatedByRuleVersion: parsed.data.generationRuleVersion ?? null, reviewedBeforeActivation: Boolean(parsed.data.generationRuleVersion) },
+        context: { generatedByRuleVersion: parsed.data.generationRuleVersion ?? null, division: parsed.data.generationDivision ?? null, focus: parsed.data.generationFocus ?? null, reviewedBeforeActivation: Boolean(parsed.data.generationRuleVersion) },
       },
     });
     return created;

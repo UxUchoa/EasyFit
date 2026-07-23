@@ -3,7 +3,7 @@
 
   # EasyFit
 
-  **Alimentação, evolução corporal e treino em um só lugar.**
+  ### Alimentação, evolução corporal e treino em um só lugar.
 
   PWA mobile-first construída para tornar o acompanhamento de saúde simples, rápido e honesto — sem inventar nutrientes, esconder dados incompletos ou depender de APIs pagas.
 
@@ -12,17 +12,36 @@
   [![React](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white)](https://react.dev/)
   [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
   [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+  [![Prisma](https://img.shields.io/badge/Prisma-6-2D3748?logo=prisma)](https://www.prisma.io/)
+  [![PWA](https://img.shields.io/badge/PWA-instalável-166534?logo=pwa&logoColor=white)](https://web.dev/explore/progressive-web-apps)
 
-  [Abrir aplicação](https://easy-fit-phi.vercel.app) · [Reportar problema](https://github.com/UxUchoa/EasyFit/issues)
+  **[Abrir aplicação](https://easy-fit-phi.vercel.app)** · [Começar localmente](#rodando-localmente) · [Reportar problema](https://github.com/UxUchoa/EasyFit/issues)
+
+  <sub>Feito para celular, internet instável e uma rotina de verdade.</sub>
 </div>
 
 ---
+
+<div align="center">
+  <a href="#sobre-o-projeto">Visão geral</a> ·
+  <a href="#tecnologias">Stack</a> ·
+  <a href="#arquitetura">Arquitetura</a> ·
+  <a href="#rodando-localmente">Instalação</a> ·
+  <a href="#supabase--vercel">Deploy</a> ·
+  <a href="#comandos-úteis">Comandos</a>
+</div>
+
+<br />
 
 ## Sobre o projeto
 
 O EasyFit reúne diário alimentar, metas nutricionais, medidas corporais e planejamento de treinos em uma experiência pensada primeiro para o celular.
 
 A aplicação é full-stack: o frontend e as rotas de API vivem no mesmo projeto Next.js, o Prisma cuida da camada de dados e o PostgreSQL pode rodar localmente via Docker ou remotamente no Supabase.
+
+| 📱 Mobile-first | 🥗 Nutrição sem chute | 🏋️ Treino adaptável | 🛜 Resiliente |
+| :---: | :---: | :---: | :---: |
+| Interface pensada para uso com uma mão | Dados incompletos ficam visíveis | Planos revisáveis por divisão e objetivo | PWA, cache e fila offline |
 
 ### O que já funciona
 
@@ -31,7 +50,7 @@ A aplicação é full-stack: o frontend e as rotas de API vivem no mesmo projeto
 | **Dieta** | Registros planejados e consumidos, refeições personalizadas, correção com histórico, cópia de refeições e resumo de macros. |
 | **Alimentos** | Pesquisa manual, favoritos, recentes, catálogo privado, TACO e consulta gratuita ao Open Food Facts. |
 | **Código de barras** | Leitura pela câmera no próprio aparelho, busca por GTIN e cadastro manual quando o produto não existe. |
-| **Treinos** | Geração de planos, divisões musculares, montagem manual com pesquisa, importação JSON, sessões, séries e substituição de exercícios. |
+| **Treinos** | Sugestões revisáveis Full body, AB, ABC, ABCD e ABCDE para força ou hipertrofia; montagem manual, pesquisa, importação JSON, sessões, séries e substituições. |
 | **Evolução** | Relatórios nutricionais, aderência aos treinos, volume por exercício e evolução de medidas corporais. |
 | **Conta** | Sessões, exportação e exclusão de dados, consentimentos, lembretes e preferências pessoais. |
 | **Experiência** | PWA instalável, fila offline, conflitos recuperáveis, skeleton loading, navegação responsiva e bottom sheets no mobile. |
@@ -46,6 +65,9 @@ A aplicação é full-stack: o frontend e as rotas de API vivem no mesmo projeto
 - **Open Food Facts** como base aberta de produtos
 - **Vitest**, **Playwright** e **axe-core** para qualidade e acessibilidade
 - **Vercel** para aplicação e APIs; **Supabase** como PostgreSQL gerenciado
+
+> [!TIP]
+> Nenhuma API paga é obrigatória. A leitura do código de barras acontece no aparelho, e a consulta usa Open Food Facts e o catálogo nacional como fontes abertas.
 
 ## Arquitetura
 

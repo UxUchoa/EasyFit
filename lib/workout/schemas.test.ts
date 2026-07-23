@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { exerciseSetSchema, workoutPlanSchema } from "./schemas";
+import { WORKOUT_RULE_VERSION } from "./generator";
+import { exerciseSetSchema, workoutGenerationRequestSchema, workoutPlanSchema } from "./schemas";
 
 describe("workout validation", () => {
   const exercise = {
@@ -19,6 +20,21 @@ describe("workout validation", () => {
 
   it("accepts full body as its own division", () => {
     expect(workoutPlanSchema.safeParse({ name: "Meu Full body", division: "FULL_BODY", exercises: [exercise] }).success).toBe(true);
+  });
+
+  it("accepts every supported generated division with a strength or hypertrophy focus", () => {
+    for (const division of ["FULL_BODY", "AB", "ABC", "ABCD", "ABCDE"]) {
+      expect(workoutGenerationRequestSchema.safeParse({ division, focus: "STRENGTH" }).success).toBe(true);
+      expect(workoutGenerationRequestSchema.safeParse({ division, focus: "HYPERTROPHY" }).success).toBe(true);
+    }
+    expect(workoutGenerationRequestSchema.safeParse({ division: "CUSTOM", focus: "HYPERTROPHY" }).success).toBe(false);
+  });
+
+  it("requires the selected division and focus when confirming a generated plan", () => {
+    const missingSelection = workoutPlanSchema.safeParse({ name: "Sugestão", division: "ABC", generationRuleVersion: WORKOUT_RULE_VERSION, exercises: [exercise] });
+    const complete = workoutPlanSchema.safeParse({ name: "Sugestão", division: "ABC", generationRuleVersion: WORKOUT_RULE_VERSION, generationDivision: "ABC", generationFocus: "HYPERTROPHY", exercises: [exercise] });
+    expect(missingSelection.success).toBe(false);
+    expect(complete.success).toBe(true);
   });
 
   it("rejects two exercises in the same day position", () => {

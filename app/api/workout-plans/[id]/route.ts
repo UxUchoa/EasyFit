@@ -31,7 +31,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   await db.$transaction([
     db.workoutPlan.update({ where: { id }, data: { name: parsed.data.name, division: parsed.data.division, active: true } }),
     db.workoutPlanVersion.create({
-      data: { planId: id, version: nextVersion, generatedByRuleVersion: parsed.data.generationRuleVersion ?? null, generationInputs: parsed.data.generationRuleVersion && session.user.profile ? { objective: session.user.profile.objective, trainingExperience: session.user.profile.trainingExperience, trainingDaysPerWeek: session.user.profile.trainingDaysPerWeek, hasPhysicalRestrictions: Boolean(session.user.profile.physicalRestrictions?.trim()), availableEquipment: session.user.profile.availableEquipment, priorityMuscleGroups: session.user.profile.priorityMuscleGroups } : undefined, reviewedAt: parsed.data.generationRuleVersion ? new Date() : null, exercises: { create: parsed.data.exercises } },
+      data: { planId: id, version: nextVersion, generatedByRuleVersion: parsed.data.generationRuleVersion ?? null, generationInputs: parsed.data.generationRuleVersion && session.user.profile ? { objective: session.user.profile.objective, trainingExperience: session.user.profile.trainingExperience, trainingDaysPerWeek: session.user.profile.trainingDaysPerWeek, hasPhysicalRestrictions: Boolean(session.user.profile.physicalRestrictions?.trim()), availableEquipment: session.user.profile.availableEquipment, priorityMuscleGroups: session.user.profile.priorityMuscleGroups, selectedDivision: parsed.data.generationDivision, focus: parsed.data.generationFocus } : undefined, reviewedAt: parsed.data.generationRuleVersion ? new Date() : null, exercises: { create: parsed.data.exercises } },
     }),
     db.auditEvent.create({
       data: {
@@ -41,7 +41,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         objectId: id,
         result: "SUCCESS",
         correlationId: randomUUID(),
-        context: { version: nextVersion, generatedByRuleVersion: parsed.data.generationRuleVersion ?? null, reviewedBeforeActivation: Boolean(parsed.data.generationRuleVersion) },
+        context: { version: nextVersion, generatedByRuleVersion: parsed.data.generationRuleVersion ?? null, division: parsed.data.generationDivision ?? null, focus: parsed.data.generationFocus ?? null, reviewedBeforeActivation: Boolean(parsed.data.generationRuleVersion) },
       },
     }),
   ]);

@@ -4,14 +4,18 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { bodyForLocalConflictResolution, classifySyncResponse, type OfflineConflict } from '@/lib/offline/domain';
-import { deleteOfflineMutation, listOfflineMutations, OFFLINE_QUEUE_EVENT, putOfflineMutation, type OfflineMutation } from '@/lib/offline/queue';
+import { deleteOfflineMutation, listOfflineMutations, notifyOfflineSyncCompleted, OFFLINE_QUEUE_EVENT, putOfflineMutation, type OfflineMutation } from '@/lib/offline/queue';
 
 async function sendMutation(mutation: OfflineMutation) {
   try {
     const response = await fetch(mutation.url, { method: mutation.method, headers: { 'Content-Type': 'application/json', ...(mutation.idempotencyKey ? { 'Idempotency-Key': mutation.idempotencyKey } : {}) }, body: JSON.stringify(mutation.body) });
-    const body = await response.json().catch(() => ({})) as { error?: string; conflict?: OfflineConflict };
+    const body = await response.json().catch(() => ({})) as Record<string, unknown> & { error?: string; conflict?: OfflineConflict };
     const status = classifySyncResponse(response.status, Boolean(body.conflict));
-    if (status === 'COMPLETE') { await deleteOfflineMutation(mutation.id); return true; }
+    if (status === 'COMPLETE') {
+      await deleteOfflineMutation(mutation.id);
+      notifyOfflineSyncCompleted({ mutation: { url: mutation.url, method: mutation.method, body: mutation.body }, response: body });
+      return true;
+    }
     await putOfflineMutation({ ...mutation, status, conflict: status === 'CONFLICT' ? body.conflict ?? null : null, error: body.error ?? 'A sincronização não foi concluída.' });
     return false;
   } catch {

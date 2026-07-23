@@ -3,6 +3,7 @@ import type { OfflineConflict, OfflineMutationStatus } from './domain';
 const DATABASE_NAME = 'easyfit-offline-v1';
 const STORE_NAME = 'mutations';
 export const OFFLINE_QUEUE_EVENT = 'easyfit-offline-queue';
+export const OFFLINE_SYNC_COMPLETED_EVENT = 'easyfit-offline-sync-completed';
 
 export type OfflineMutation = {
   id: string;
@@ -16,6 +17,11 @@ export type OfflineMutation = {
   status: OfflineMutationStatus;
   conflict: OfflineConflict | null;
   error: string | null;
+};
+
+export type OfflineSyncCompletedDetail = {
+  mutation: Pick<OfflineMutation, 'url' | 'method' | 'body'>;
+  response: Record<string, unknown>;
 };
 
 function requestResult<T>(request: IDBRequest<T>) {
@@ -39,6 +45,10 @@ function database() {
 
 function notifyQueueChanged() {
   window.dispatchEvent(new Event(OFFLINE_QUEUE_EVENT));
+}
+
+export function notifyOfflineSyncCompleted(detail: OfflineSyncCompletedDetail) {
+  window.dispatchEvent(new CustomEvent<OfflineSyncCompletedDetail>(OFFLINE_SYNC_COMPLETED_EVENT, { detail }));
 }
 
 export async function putOfflineMutation(mutation: OfflineMutation) {

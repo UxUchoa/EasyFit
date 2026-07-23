@@ -24,8 +24,8 @@ export function AdminAccessManager({ access }: { access: Access[] }) {
     finally { setPending(false); }
   }
   async function reauthenticate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const password = String(new FormData(event.currentTarget).get('password') ?? ''); setPending(true); setError(false);
-    try { await jsonRequest('/api/auth/reauth', { method: 'POST', body: JSON.stringify({ password }) }); setNeedsPassword(false); setMessage('Senha confirmada. Envie novamente a solicitação de acesso.'); (event.currentTarget as HTMLFormElement).reset(); }
+    event.preventDefault(); const form = event.currentTarget; const password = String(new FormData(form).get('password') ?? ''); setPending(true); setError(false);
+    try { await jsonRequest('/api/auth/reauth', { method: 'POST', body: JSON.stringify({ password }) }); setNeedsPassword(false); setMessage('Senha confirmada. Envie novamente a solicitação de acesso.'); form.reset(); }
     catch (caught) { setError(true); setMessage(caught instanceof Error ? caught.message : 'Senha não confirmada.'); } finally { setPending(false); }
   }
   async function consult(id: string) { setPending(true); setError(false); try { const body = await jsonRequest(`/api/admin/support-access/${id}/summary`, { method: 'GET' }); setSummary((current) => ({ ...current, [id]: body })); setMessage('Resumo consultado e objetos registrados na trilha.'); router.refresh(); } catch (caught) { setError(true); setMessage(caught instanceof Error ? caught.message : 'Consulta indisponível.'); } finally { setPending(false); } }

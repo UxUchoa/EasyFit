@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { enqueueOfflineMutation, putOfflineMutation } from '@/lib/offline/queue';
+import { enqueueOfflineMutation, OFFLINE_SYNC_COMPLETED_EVENT, putOfflineMutation, type OfflineSyncCompletedDetail } from '@/lib/offline/queue';
 import type { OfflineConflict } from '@/lib/offline/domain';
 import { BarcodeScanner } from '@/components/barcode-scanner';
 import { FoodResultsSkeleton } from '@/components/page-skeletons';
@@ -100,6 +100,27 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
     const timeout = window.setTimeout(() => setNotice(""), 3200);
     return () => window.clearTimeout(timeout);
   }, [notice]);
+
+  useEffect(() => {
+    const syncCompleted = (event: Event) => {
+      const detail = (event as CustomEvent<OfflineSyncCompletedDetail>).detail;
+      const entry = detail?.response.entry as DiaryEntry | undefined;
+      if (!entry) return;
+      const targetMealSlug = typeof detail.mutation.body.mealSlug === 'string' ? detail.mutation.body.mealSlug : null;
+      setMeals((items) => items.map((meal) => {
+        if (meal.entries.some((candidate) => candidate.id === entry.id)) {
+          return { ...meal, entries: meal.entries.map((candidate) => candidate.id === entry.id ? entry : candidate) };
+        }
+        if (detail.mutation.method === 'POST' && targetMealSlug === meal.slug) {
+          return { ...meal, entries: [...meal.entries, entry] };
+        }
+        return meal;
+      }));
+      setNotice('Alteração offline sincronizada com o diário.');
+    };
+    window.addEventListener(OFFLINE_SYNC_COMPLETED_EVENT, syncCompleted);
+    return () => window.removeEventListener(OFFLINE_SYNC_COMPLETED_EVENT, syncCompleted);
+  }, []);
 
   function showNotice(message: string) {
     setNotice(message);
@@ -525,9 +546,9 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
           <p className="hidden text-xs text-[#657168] sm:block">Tudo fica na refeição escolhida</p>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <button type="button" className="action-tile action-tile-primary" onClick={() => openPanel("search")}><span className="action-tile-icon"><DiaryActionIcon name="search" /></span><span><strong>Buscar alimento</strong><small>Nome ou marca</small></span></button>
+          <button type="button" data-testid="diary-action-search" className="action-tile action-tile-primary" onClick={() => openPanel("search")}><span className="action-tile-icon"><DiaryActionIcon name="search" /></span><span><strong>Buscar alimento</strong><small>Nome ou marca</small></span></button>
           <button type="button" className="action-tile" onClick={() => openPanel("barcode")}><span className="action-tile-icon"><DiaryActionIcon name="barcode" /></span><span><strong>Ler código</strong><small>Use a câmera</small></span></button>
-          <button type="button" className="action-tile" onClick={() => openPanel("quick")}><span className="action-tile-icon"><DiaryActionIcon name="quick" /></span><span><strong>Calorias rápidas</strong><small>Digite os valores</small></span></button>
+          <button type="button" data-testid="diary-action-quick" className="action-tile" onClick={() => openPanel("quick")}><span className="action-tile-icon"><DiaryActionIcon name="quick" /></span><span><strong>Calorias rápidas</strong><small>Digite os valores</small></span></button>
           <button type="button" className="action-tile" onClick={() => openPanel("meal")}><span className="action-tile-icon"><DiaryActionIcon name="meal" /></span><span><strong>Nova refeição</strong><small>Personalize o dia</small></span></button>
         </div>
       </section>
@@ -602,7 +623,7 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
 
           {panel === "search" && (
             <div className="mt-5" aria-busy={pending}>
-              <form onSubmit={searchFoods} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+              <form data-testid="food-search-form" onSubmit={searchFoods} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
                 <div className="field">
                   <label htmlFor="food-query">Pesquisar por nome ou marca</label>
                   <input id="food-query" value={query} onChange={(event) => setQuery(event.target.value)} minLength={2} required placeholder="Ex.: aveia, iogurte, arroz…" />

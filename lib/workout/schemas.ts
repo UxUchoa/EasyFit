@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { WORKOUT_RULE_VERSION } from './generator';
+import { WORKOUT_FOCUSES, WORKOUT_GENERATION_DIVISIONS, WORKOUT_RULE_VERSION } from './generator';
+
+export const workoutGenerationRequestSchema = z.object({
+  division: z.enum(WORKOUT_GENERATION_DIVISIONS),
+  focus: z.enum(WORKOUT_FOCUSES),
+});
 
 export const workoutPlanExerciseSchema = z.object({
   exerciseId: z.string().cuid(),
@@ -15,9 +20,25 @@ export const workoutPlanSchema = z
     name: z.string().trim().min(2).max(120),
     division: z.enum(["FULL_BODY", "A", "AB", "ABC", "ABCD", "ABCDE", "CUSTOM"]),
     generationRuleVersion: z.literal(WORKOUT_RULE_VERSION).nullable().optional(),
+    generationDivision: z.enum(WORKOUT_GENERATION_DIVISIONS).nullable().optional(),
+    generationFocus: z.enum(WORKOUT_FOCUSES).nullable().optional(),
     exercises: z.array(workoutPlanExerciseSchema).min(1).max(100),
   })
   .superRefine((value, context) => {
+    if (value.generationRuleVersion && (!value.generationDivision || !value.generationFocus)) {
+      context.addIssue({
+        code: "custom",
+        path: ["generationFocus"],
+        message: "Informe a divisão e o foco usados para gerar a sugestão.",
+      });
+    }
+    if (value.generationDivision && value.generationDivision !== value.division) {
+      context.addIssue({
+        code: "custom",
+        path: ["generationDivision"],
+        message: "A divisão confirmada precisa ser a mesma da sugestão gerada.",
+      });
+    }
     const positions = new Set<string>();
     value.exercises.forEach((exercise, index) => {
       const key = `${exercise.dayIndex}:${exercise.position}`;

@@ -64,9 +64,10 @@ export function AccountCenter({
 
   async function reauthenticate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     setBusy("reauth");
     setNotice(null);
-    const form = new FormData(event.currentTarget);
+    const form = new FormData(formElement);
     try {
       await jsonRequest("/api/auth/reauth", {
         method: "POST",
@@ -74,7 +75,7 @@ export function AccountCenter({
         body: JSON.stringify({ password: form.get("password") }),
       });
       setReauthenticated(true);
-      event.currentTarget.reset();
+      formElement.reset();
       setNotice({ kind: "success", text: "Identidade confirmada por 5 minutos neste dispositivo." });
       window.setTimeout(() => setReauthenticated(false), 5 * 60 * 1000);
     } catch (error) {
@@ -86,9 +87,10 @@ export function AccountCenter({
 
   async function changePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     setBusy("password");
     setNotice(null);
-    const form = new FormData(event.currentTarget);
+    const form = new FormData(formElement);
     try {
       await jsonRequest("/api/auth/password", {
         method: "POST",
@@ -99,7 +101,7 @@ export function AccountCenter({
           revokeOtherSessions: form.get("revokeOtherSessions") === "on",
         }),
       });
-      event.currentTarget.reset();
+      formElement.reset();
       setReauthenticated(true);
       setNotice({ kind: "success", text: "Senha alterada com segurança." });
       router.refresh();
