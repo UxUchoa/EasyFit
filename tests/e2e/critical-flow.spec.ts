@@ -30,6 +30,13 @@ test('cadastro, onboarding e adição rápida preservam o fluxo principal', asyn
   await page.getByRole('button', { name: 'Criar conta' }).click();
   await expect(page).toHaveURL(/\/onboarding$/);
 
+  const birthDateBox = await page.getByLabel('Data de nascimento').boundingBox();
+  const viewport = page.viewportSize();
+  expect(birthDateBox).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(birthDateBox!.x + birthDateBox!.width).toBeLessThanOrEqual(viewport!.width);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+
   await page.getByLabel('Como podemos chamar você?').fill('Pessoa E2E');
   await page.getByLabel('Data de nascimento').fill('1990-05-10');
   await page.getByLabel('Sexo para o cálculo').selectOption('female');

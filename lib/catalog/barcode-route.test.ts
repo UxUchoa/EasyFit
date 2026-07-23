@@ -22,7 +22,7 @@ vi.mock("@/lib/observability/metrics", () => ({ recordOperationalMetricSafely: v
 
 import { GET as lookupBarcode } from "@/app/api/barcode/[gtin]/route";
 
-describe("barcode route Brazilian fallback", () => {
+describe("barcode route", () => {
   beforeEach(() => {
     mocks.findMany.mockReset().mockResolvedValue([]);
     mocks.providerFetch.mockReset().mockResolvedValue(new Response(null, { status: 404 }));
@@ -51,5 +51,50 @@ describe("barcode route Brazilian fallback", () => {
     });
     expect(result.warning).toContain("referência");
     expect(mocks.providerFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns the current Open Food Facts v3 olive oil payload", async () => {
+    const gtin = "5601216120152";
+    mocks.providerFetch.mockResolvedValue(new Response(JSON.stringify({
+      status: "success",
+      product: {
+        code: gtin,
+        product_name: "AZEITE EXT VIRGEM ANDORINHA",
+        brands: "ANDORINHA",
+        product_quantity: 500,
+        product_quantity_unit: "ml",
+        serving_quantity: 13,
+        nutriments: {},
+        nutrition: {
+          aggregated_set: {
+            per: "100ml",
+            nutrients: {
+              "energy-kcal": { value: 830.769, value_computed: 108, unit: "kcal" },
+              proteins: { value: 0, unit: "g" },
+              carbohydrates: { value: 0, unit: "g" },
+              fat: { value: 92.3077, unit: "g" },
+            },
+          },
+        },
+      },
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+
+    const response = await lookupBarcode(
+      new NextRequest(`http://localhost:3000/api/barcode/${gtin}`),
+      { params: Promise.resolve({ gtin }) },
+    );
+    const result = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(result.food).toMatchObject({
+      name: "AZEITE EXT VIRGEM ANDORINHA",
+      barcode: gtin,
+      source: "OPEN_FOOD_FACTS",
+      baseQuantity: 100,
+      baseUnit: "ml",
+      calories: 830.769,
+      fatGrams: 92.3077,
+    });
+    expect(mocks.providerFetch).toHaveBeenCalledTimes(1);
   });
 });

@@ -81,6 +81,7 @@ a {
 
 .field {
   display: grid;
+  min-width: 0;
   gap: 0.45rem;
 }
 
@@ -95,6 +96,8 @@ a {
 .field select,
 .field textarea {
   min-height: 3.25rem;
+  min-width: 0;
+  max-width: 100%;
   width: 100%;
   border: 1px solid #cbd4ca;
   border-radius: 0.9rem;

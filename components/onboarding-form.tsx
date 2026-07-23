@@ -61,7 +61,7 @@ export function OnboardingForm() {
           <input id="displayName" name="displayName" autoComplete="name" minLength={2} maxLength={80} required placeholder="Seu nome ou apelido" />
         </div>
         <div className="grid gap-5 sm:grid-cols-2">
-          <div className="field"><label htmlFor="birthDate">Data de nascimento</label><input id="birthDate" name="birthDate" type="date" autoComplete="bday" required /></div>
+          <div className="field"><label htmlFor="birthDate">Data de nascimento</label><input className="min-w-0 max-w-full" id="birthDate" name="birthDate" type="date" autoComplete="bday" required /></div>
           <div className="field"><label htmlFor="biologicalSex">Sexo para o cálculo</label><select id="biologicalSex" name="biologicalSex" required defaultValue=""><option value="" disabled>Selecione</option><option value="female">Feminino</option><option value="male">Masculino</option></select></div>
         </div>
         <p className="-mt-2 text-xs leading-5 text-[#69746c]">Usado somente na fórmula de Mifflin-St Jeor. É um parâmetro de cálculo, não sua identidade de gênero.</p>

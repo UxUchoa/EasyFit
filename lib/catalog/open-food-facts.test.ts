@@ -51,6 +51,43 @@ describe("Open Food Facts normalization", () => {
     ).toBe(120);
   });
 
+  it("accepts the current v3 string status and preserves a 100 ml basis", () => {
+    expect(
+      normalizeOpenFoodFactsProduct({
+        status: "success",
+        product: {
+          product_name: "AZEITE EXT VIRGEM ANDORINHA",
+          brands: "ANDORINHA",
+          product_quantity: 500,
+          product_quantity_unit: "ml",
+          serving_quantity: 13,
+          nutriments: {},
+          nutrition: {
+            aggregated_set: {
+              per: "100ml",
+              nutrients: {
+                "energy-kcal": { value: 830.769, value_computed: 108, unit: "kcal" },
+                proteins: { value: 0, unit: "g" },
+                carbohydrates: { value: 0, unit: "g" },
+                fat: { value: 92.3077, unit: "g" },
+              },
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      name: "AZEITE EXT VIRGEM ANDORINHA",
+      brand: "ANDORINHA",
+      baseQuantity: 100,
+      baseUnit: "ml",
+      calories: 830.769,
+      proteinGrams: 0,
+      carbohydrateGrams: 0,
+      fatGrams: 92.3077,
+      fiberGrams: null,
+    });
+  });
+
   it("rejects products without a name or calorie basis", () => {
     expect(normalizeOpenFoodFactsProduct({ product: { product_name: "Sem tabela" } })).toBeNull();
   });

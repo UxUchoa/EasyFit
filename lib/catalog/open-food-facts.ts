@@ -28,7 +28,9 @@ const responseSchema = z.object({
       nutriments: z.record(z.string(), z.unknown()).optional(),
     })
     .optional(),
-  status: z.coerce.number().optional(),
+  // The v2 API uses a numeric status while the current v3 API uses strings
+  // such as "success". The status is informational for normalization.
+  status: z.unknown().optional(),
 });
 
 function finite(value: unknown) {
@@ -41,7 +43,9 @@ function nutrientValue(
   key: string,
 ) {
   const nutrient = nutrients?.[key];
-  return finite(nutrient?.value_computed ?? nutrient?.value);
+  // In an aggregated set, `value` is normalized to the set basis (for
+  // example 100 ml), while `value_computed` may retain the source serving.
+  return finite(nutrient?.value ?? nutrient?.value_computed);
 }
 
 export type NormalizedOffProduct = {
@@ -72,7 +76,11 @@ export function normalizeOpenFoodFactsProduct(input: unknown): NormalizedOffProd
   const baseQuantity = isServing
     ? product.serving_quantity ?? product.product_quantity ?? 1
     : 100;
-  const baseUnit = isServing ? product.product_quantity_unit ?? "g" : "g";
+  const baseUnit = isServing
+    ? product.product_quantity_unit ?? "g"
+    : per === "100ml"
+      ? "ml"
+      : "g";
   const brand = Array.isArray(product.brands)
     ? product.brands.join(", ")
     : product.brands ?? null;
