@@ -6,7 +6,10 @@ import type { UserRole } from '@prisma/client';
 
 type MockSession = { id: string; userId: string; reauthenticatedAt: Date | null; user: { id: string; username: string; onboardingDone: boolean; role: UserRole; profile: null } };
 const authState = vi.hoisted(() => ({ session: null as MockSession | null }));
-vi.mock('@/lib/auth/session', () => ({ getCurrentSession: async () => authState.session }));
+vi.mock('@/lib/auth/session', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/auth/session')>();
+  return { ...actual, getCurrentSession: async () => authState.session };
+});
 
 import { PATCH as patchEntry } from '@/app/api/entries/[id]/route';
 import { DELETE as deletePrivateFood } from '@/app/api/private-foods/[id]/route';
