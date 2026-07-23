@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { enqueueOfflineMutation, putOfflineMutation } from '@/lib/offline/queue';
 import type { OfflineConflict } from '@/lib/offline/domain';
 import { BarcodeScanner } from '@/components/barcode-scanner';
+import { FoodResultsSkeleton } from '@/components/page-skeletons';
 
 type DiaryEntry = {
   id: string;
@@ -59,6 +60,16 @@ function formatNumber(value: number, digits = 0) {
   return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: digits }).format(value);
 }
 
+type DiaryActionIconName = "search" | "barcode" | "quick" | "meal";
+
+function DiaryActionIcon({ name }: { name: DiaryActionIconName }) {
+  const common = { width: 22, height: 22, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
+  if (name === "search") return <svg {...common}><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>;
+  if (name === "barcode") return <svg {...common}><path d="M4 5v14M8 5v14M11 5v14M16 5v14M20 5v14" /></svg>;
+  if (name === "quick") return <svg {...common}><path d="M13 2 5 14h7l-1 8 8-12h-7l1-8Z" /></svg>;
+  return <svg {...common}><path d="M12 5v14M5 12h14" /></svg>;
+}
+
 export function DiaryClient({ date, today, userScope, meals: initialMeals, initialBarcode = "", initialScanner = false }: { date: string; today: string; userScope: string; meals: DiaryMeal[]; initialBarcode?: string; initialScanner?: boolean }) {
   const router = useRouter();
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -75,6 +86,7 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
   const [searchedExternal, setSearchedExternal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftRestored, setDraftRestored] = useState(false);
+  const [notice, setNotice] = useState("");
 
   const activeDraftKey = panel === "quick" || panel === "private" ? `easyfit:draft:${date}:${panel}` : null;
 
@@ -82,6 +94,16 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
     const dialog = dialogRef.current;
     if (panel && dialog && !dialog.open) dialog.showModal();
   }, [panel]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timeout = window.setTimeout(() => setNotice(""), 3200);
+    return () => window.clearTimeout(timeout);
+  }, [notice]);
+
+  function showNotice(message: string) {
+    setNotice(message);
+  }
 
   useEffect(() => {
     queueMicrotask(() => setDraftRestored(false));
@@ -154,6 +176,7 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
       try {
         await enqueueOfflineMutation({ userScope, url: `/api/days/${date}/entries`, method: 'POST', body, idempotencyKey, label });
         setPanel(null);
+        showNotice("Registro salvo no aparelho e aguardando sincronização.");
         return true;
       } catch { setError('Não foi possível preservar esta alteração no dispositivo.'); return false; }
     };
@@ -180,6 +203,7 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
         ? { ...meal, entries: meal.entries.some((entry) => entry.id === result.entry!.id) ? meal.entries : [...meal.entries, result.entry!] }
         : meal));
       setPanel(null);
+      showNotice(`${label} adicionado ao diário.`);
       return true;
     } catch {
       return await queueLocally();
@@ -306,10 +330,13 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
     }).catch(() => null);
     const result = response ? await response.json().catch(() => ({})) as { error?: string; copiedEntries?: number; entries?: Array<{ mealSlug: string; entry: DiaryEntry }> } : null;
     if (!response?.ok) setError(result?.error ?? "Não foi possível copiar os registros.");
-    else setMeals((items) => items.map((meal) => ({
-      ...meal,
-      entries: [...meal.entries, ...(result?.entries ?? []).filter((item) => item.mealSlug === meal.slug).map((item) => item.entry)],
-    })));
+    else {
+      setMeals((items) => items.map((meal) => ({
+        ...meal,
+        entries: [...meal.entries, ...(result?.entries ?? []).filter((item) => item.mealSlug === meal.slug).map((item) => item.entry)],
+      })));
+      showNotice(sourceMealSlug ? "Refeição anterior copiada." : "Dia anterior copiado.");
+    }
     setPending(false);
   }
 
@@ -347,6 +374,7 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
       }
       openPanel("search");
       clearDraft("private");
+      showNotice("Alimento salvo. Agora você pode pesquisá-lo no catálogo.");
     } catch {
       setError("Sem conexão. Os dados digitados foram preservados.");
     } finally {
@@ -359,7 +387,10 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
     setError("");
     const response = await fetch(`/api/entries/${id}`, { method: "DELETE" }).catch(() => null);
     if (!response?.ok) setError("Não foi possível remover o registro.");
-    else setMeals((items) => items.map((meal) => ({ ...meal, entries: meal.entries.filter((entry) => entry.id !== id) })));
+    else {
+      setMeals((items) => items.map((meal) => ({ ...meal, entries: meal.entries.filter((entry) => entry.id !== id) })));
+      showNotice("Registro removido do diário.");
+    }
     setPending(false);
   }
 
@@ -369,9 +400,12 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
     const response = await fetch(`/api/entries/${id}/consume`, { method: "POST" }).catch(() => null);
     const result = response ? await response.json().catch(() => ({})) as { entry?: DiaryEntry } : null;
     if (!response?.ok || !result?.entry) setError("Não foi possível confirmar o consumo.");
-    else setMeals((items) => items.map((meal) => meal.entries.some((entry) => entry.id === id)
-      ? { ...meal, entries: meal.entries.some((entry) => entry.id === result.entry!.id) ? meal.entries : [...meal.entries, result.entry!] }
-      : meal));
+    else {
+      setMeals((items) => items.map((meal) => meal.entries.some((entry) => entry.id === id)
+        ? { ...meal, entries: meal.entries.some((entry) => entry.id === result.entry!.id) ? meal.entries : [...meal.entries, result.entry!] }
+        : meal));
+      showNotice("Item marcado como consumido.");
+    }
     setPending(false);
   }
 
@@ -389,6 +423,7 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
     else {
       setPanel(null);
       setMeals((items) => [...items, { id: result.meal!.id, slug: result.meal!.slug, label: result.meal!.customName ?? "Refeição", custom: true, entries: [] }]);
+      showNotice("Refeição personalizada criada.");
     }
     setPending(false);
   }
@@ -402,15 +437,18 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
     }).catch(() => null);
     const result = response ? await response.json().catch(() => ({})) as { meal?: { id: string; customName: string | null; position: number } } : null;
     if (!response?.ok || !result?.meal) setError("Não foi possível atualizar a refeição.");
-    else setMeals((items) => {
-      const updated = items.map((meal) => meal.id === id ? { ...meal, label: result.meal!.customName ?? meal.label } : meal);
-      if (data.position === undefined) return updated;
-      const from = updated.findIndex((meal) => meal.id === id);
-      if (from < 0) return updated;
-      const [moved] = updated.splice(from, 1);
-      updated.splice(Math.min(Math.max(0, result.meal!.position), updated.length), 0, moved);
-      return [...updated];
-    });
+    else {
+      setMeals((items) => {
+        const updated = items.map((meal) => meal.id === id ? { ...meal, label: result.meal!.customName ?? meal.label } : meal);
+        if (data.position === undefined) return updated;
+        const from = updated.findIndex((meal) => meal.id === id);
+        if (from < 0) return updated;
+        const [moved] = updated.splice(from, 1);
+        updated.splice(Math.min(Math.max(0, result.meal!.position), updated.length), 0, moved);
+        return [...updated];
+      });
+      showNotice(data.name ? "Nome da refeição atualizado." : "Ordem das refeições atualizada.");
+    }
     setPending(false);
   }
 
@@ -418,7 +456,10 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
     setPending(true);
     const response = await fetch(`/api/meals/${id}`, { method: "DELETE" }).catch(() => null);
     if (!response?.ok) setError("Não foi possível excluir a refeição.");
-    else setMeals((items) => items.filter((meal) => meal.id !== id));
+    else {
+      setMeals((items) => items.filter((meal) => meal.id !== id));
+      showNotice("Refeição excluída.");
+    }
     setPending(false);
   }
 
@@ -431,7 +472,9 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
       try {
         const queued = await enqueueOfflineMutation({ userScope, url: `/api/entries/${entry.id}`, method: 'PATCH', body, idempotencyKey: null, label: `Editar ${entry.name}` });
         if (conflict) await putOfflineMutation({ ...queued, status: 'CONFLICT', conflict, error: message });
-        setEditingId(null); return true;
+        setEditingId(null);
+        showNotice(conflict ? "Edição preservada para resolver um conflito." : "Edição salva no aparelho e aguardando sincronização.");
+        return true;
       } catch { setError('Não foi possível preservar esta edição no dispositivo.'); return false; }
     };
     try {
@@ -452,6 +495,7 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
         }),
       })));
       setEditingId(null);
+      showNotice("Quantidade atualizada.");
     } catch { await queueLocally(); }
     finally { setPending(false); }
   }
@@ -475,18 +519,36 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
         {totals.plannedCalories > 0 && <p className="mt-4 border-t border-white/10 pt-4 text-sm text-white/70">Planejado: <strong className="text-white">{formatNumber(totals.plannedCalories)} kcal</strong> · diferença realizada: <strong className="text-white">{formatNumber(totals.calories - totals.plannedCalories)} kcal</strong></p>}
       </section>
 
-      <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <button className="button-primary !min-h-12 !px-3 text-sm" onClick={() => openPanel("quick")}>+ Calorias</button>
-        <button className="button-secondary !min-h-12 !px-3 text-sm" onClick={() => openPanel("search")}>Buscar</button>
-        <button className="button-secondary !min-h-12 !px-3 text-sm" onClick={() => openPanel("private")}>Cadastrar</button>
-        <button className="button-secondary !min-h-12 !px-3 text-sm" onClick={() => openPanel("meal")}>+ Refeição</button>
-      </div>
-      <button type="button" className="button-secondary mt-2 w-full" onClick={() => openPanel("barcode")}>▣ Ler código de barras</button>
-      <div className="mt-2 grid gap-2 sm:grid-cols-2"><button className="button-secondary" disabled={pending} onClick={() => copyFromPrevious()}>Copiar dia anterior</button><Link className="button-secondary" href="/alimentos">Gerenciar alimentos privados</Link></div>
-      <div className="card mt-2 flex flex-wrap items-end gap-3 p-4"><div className="field min-w-52 flex-1"><label htmlFor="copy-meal">Copiar refeição do dia anterior</label><select id="copy-meal" value={mealSlug} onChange={(event) => setMealSlug(event.target.value)}>{meals.map((meal) => <option key={meal.slug} value={meal.slug}>{meal.label}</option>)}</select></div><button className="button-secondary" disabled={pending} onClick={() => copyFromPrevious(mealSlug)}>Copiar refeição</button></div>
+      <section className="mt-5" aria-labelledby="diary-actions-title">
+        <div className="flex items-end justify-between gap-3">
+          <div><p className="eyebrow">Registro rápido</p><h2 id="diary-actions-title" className="mt-1 text-xl font-black">Como quer adicionar?</h2></div>
+          <p className="hidden text-xs text-[#657168] sm:block">Tudo fica na refeição escolhida</p>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <button type="button" className="action-tile action-tile-primary" onClick={() => openPanel("search")}><span className="action-tile-icon"><DiaryActionIcon name="search" /></span><span><strong>Buscar alimento</strong><small>Nome ou marca</small></span></button>
+          <button type="button" className="action-tile" onClick={() => openPanel("barcode")}><span className="action-tile-icon"><DiaryActionIcon name="barcode" /></span><span><strong>Ler código</strong><small>Use a câmera</small></span></button>
+          <button type="button" className="action-tile" onClick={() => openPanel("quick")}><span className="action-tile-icon"><DiaryActionIcon name="quick" /></span><span><strong>Calorias rápidas</strong><small>Digite os valores</small></span></button>
+          <button type="button" className="action-tile" onClick={() => openPanel("meal")}><span className="action-tile-icon"><DiaryActionIcon name="meal" /></span><span><strong>Nova refeição</strong><small>Personalize o dia</small></span></button>
+        </div>
+      </section>
+
+      <details className="utility-panel card mt-4 overflow-hidden">
+        <summary className="flex min-h-14 cursor-pointer items-center justify-between gap-4 px-5 py-3 font-black text-[#334039] hover:bg-[#f8faf6]">
+          <span><span className="block text-sm">Mais opções do diário</span><span className="mt-0.5 block text-xs font-medium text-[#657168]">Copiar registros e gerenciar seu catálogo</span></span>
+          <span aria-hidden="true" className="grid size-8 place-items-center rounded-full bg-[#edf4eb] text-lg text-[#166534]">⌄</span>
+        </summary>
+        <div className="border-t border-[#dfe5dc] p-4 sm:p-5">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button className="button-secondary" disabled={pending} onClick={() => copyFromPrevious()}>Copiar dia anterior</button>
+            <button className="button-secondary" onClick={() => openPanel("private")}>Cadastrar alimento pelo rótulo</button>
+            <Link className="button-secondary sm:col-span-2" href="/alimentos">Gerenciar alimentos privados</Link>
+          </div>
+          <div className="mt-4 flex flex-wrap items-end gap-3 rounded-2xl bg-[#f4f6f1] p-4"><div className="field min-w-52 flex-1"><label htmlFor="copy-meal">Copiar refeição do dia anterior</label><select id="copy-meal" value={mealSlug} onChange={(event) => setMealSlug(event.target.value)}>{meals.map((meal) => <option key={meal.slug} value={meal.slug}>{meal.label}</option>)}</select></div><button className="button-secondary" disabled={pending} onClick={() => copyFromPrevious(mealSlug)}>Copiar refeição</button></div>
+        </div>
+      </details>
 
       {panel && (
-        <dialog ref={dialogRef} className="m-auto max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-4xl overflow-y-auto rounded-[1.75rem] border border-[#dfe5dc] bg-[#f8faf6] p-0 text-[#17201b] shadow-2xl backdrop:bg-[#07120c]/70" aria-labelledby="entry-panel-title" onClose={closePanel} onCancel={() => setPanel(null)} onClick={(event) => { if (event.target === event.currentTarget) setPanel(null); }}>
+        <dialog ref={dialogRef} className="app-dialog m-auto max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-4xl overflow-y-auto rounded-[1.75rem] border border-[#dfe5dc] bg-[#f8faf6] p-0 text-[#17201b] shadow-2xl backdrop:bg-[#07120c]/70" aria-labelledby="entry-panel-title" onClose={closePanel} onCancel={() => setPanel(null)} onClick={(event) => { if (event.target === event.currentTarget) setPanel(null); }}>
         <div className="p-4 sm:p-7" data-draft-key={activeDraftKey ?? undefined} onInput={saveDraft}>
           <div className="flex items-start justify-between gap-4">
             <div><p className="eyebrow">Adicionar à dieta</p><h2 id="entry-panel-title" className="mt-2 text-xl font-black">{panel === "quick" ? "Adição rápida" : panel === "search" ? "Buscar alimento" : panel === "private" ? "Cadastrar pelo rótulo" : panel === "barcode" ? "Ler código de barras" : "Refeição personalizada"}</h2>{panel === "barcode" && <p className="mt-2 text-sm text-[#657168]">Leitura local e consulta gratuita no Open Food Facts.</p>}</div>
@@ -503,6 +565,7 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
                 ? { ...meal, entries: meal.entries.some((candidate) => candidate.id === entry.id) ? meal.entries : [...meal.entries, entry] }
                 : meal));
               setPanel(null);
+              showNotice("Produto adicionado ao diário.");
               window.history.replaceState(null, "", `/dieta?date=${date}`);
             }}
             onManualSearch={() => openPanel("search")}
@@ -510,7 +573,7 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
           />}
 
           {panel === "quick" && (
-            <div className="mt-5">
+            <div className="mt-5" aria-busy={pending}>
               <div className="rounded-2xl border border-[#dfe5dc] bg-[#f4f6f1] p-4">
                 <h3 className="font-black">O que você deseja adicionar?</h3>
                 <p className="mt-1 text-sm leading-6 text-[#657168]">Use a adição rápida quando você já souber as calorias. Para escolher um produto e preencher os nutrientes automaticamente, pesquise no catálogo.</p>
@@ -538,7 +601,7 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
           )}
 
           {panel === "search" && (
-            <div className="mt-5">
+            <div className="mt-5" aria-busy={pending}>
               <form onSubmit={searchFoods} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
                 <div className="field">
                   <label htmlFor="food-query">Pesquisar por nome ou marca</label>
@@ -566,6 +629,7 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
               {canSearchExternal && <button type="button" className="button-secondary mt-3 w-full min-h-12" onClick={searchExternalFoods} disabled={pending}>Buscar também na base aberta</button>}
           
               <div className="mt-4 grid gap-4">
+                {pending && foods.length === 0 && <FoodResultsSkeleton />}
                 {foods.map((food) => (
                   <article key={food.id} className="rounded-2xl border border-[#dfe5dc] bg-white p-4">
                     <div className="flex items-start justify-between gap-3">
@@ -617,6 +681,9 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
         </div>
         </dialog>
       )}
+
+      {notice && !error && <div className="fixed inset-x-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-[70] mx-auto flex max-w-md items-center gap-3 rounded-2xl bg-[#153d28] px-4 py-3 text-sm font-bold text-white shadow-2xl md:bottom-6" role="status" aria-live="polite"><span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full bg-[#d8f24a] text-[#153d28]">✓</span><span>{notice}</span></div>}
+      {error && !panel && <div className="fixed inset-x-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-[70] mx-auto flex max-w-lg items-center gap-3 rounded-2xl border border-[#f0d5d2] bg-[#fff7f6] px-4 py-3 text-sm font-bold text-[#8f1f17] shadow-2xl md:bottom-6" role="alert"><span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full bg-[#f7dfdc]">!</span><span className="flex-1">{error}</span><button type="button" className="grid size-9 shrink-0 place-items-center rounded-full hover:bg-[#f7dfdc]" onClick={() => setError("")} aria-label="Fechar mensagem de erro">×</button></div>}
 
       <section className="mt-8 grid gap-4">
         {meals.map((meal) => {
