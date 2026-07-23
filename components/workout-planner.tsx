@@ -43,10 +43,10 @@ type DraftExercise = {
 };
 
 const DIVISION_DAY_LABELS: Record<string, string[]> = {
-  AB: ["Superior", "Inferior"],
-  ABC: ["Peito, ombros e tríceps", "Costas e bíceps", "Pernas completas"],
+  AB: ["Superiores", "Inferiores completos"],
+  ABC: ["Peito, ombros e tríceps", "Costas, bíceps e antebraços", "Pernas completas"],
   ABCD: ["Peito e tríceps", "Costas e bíceps", "Pernas completas", "Ombros e antebraços"],
-  ABCDE: ["Peito e tríceps", "Costas e bíceps", "Pernas completas", "Ombros e antebraços", "Braços e core"],
+  ABCDE: ["Peito", "Costas", "Pernas completas", "Ombros", "Bíceps, tríceps e antebraços"],
 };
 
 function workoutDayLabel(division: string, dayIndex: number) {

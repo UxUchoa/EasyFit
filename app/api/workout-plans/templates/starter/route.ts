@@ -26,9 +26,9 @@ export async function POST(request: NextRequest) {
       exerciseId: byName.get(name)!.id,
       dayIndex,
       position,
-      targetSets: name === "Prancha" ? 3 : 3,
-      targetReps: name === "Prancha" ? "20–40 s" : "8–12",
-      restSeconds: name === "Prancha" ? 45 : 75,
+      targetSets: 3,
+      targetReps: "8–12",
+      restSeconds: 75,
     })),
   );
 

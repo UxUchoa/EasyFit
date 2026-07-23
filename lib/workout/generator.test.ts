@@ -13,6 +13,7 @@ const catalog: GenerationExercise[] = [
   { id: '9', name: 'Elevação pélvica', muscleGroup: 'Glúteos', equipment: 'Barra' },
   { id: '10', name: 'Prancha', muscleGroup: 'Core', equipment: 'Peso corporal' },
   { id: '11', name: 'Rosca inversa', muscleGroup: 'Antebraços', equipment: 'Barra ou halteres' },
+  { id: '12', name: 'Panturrilha em pé na máquina', muscleGroup: 'Panturrilhas', equipment: 'Máquinas' },
 ];
 
 const profile: GenerationProfile = {
@@ -29,8 +30,10 @@ const splitCatalog: GenerationExercise[] = [
   ['Tríceps 1', 'Tríceps'], ['Tríceps 2', 'Tríceps'], ['Tríceps 3', 'Tríceps'],
   ['Costas 1', 'Costas'], ['Costas 2', 'Costas'], ['Costas 3', 'Costas'],
   ['Bíceps 1', 'Bíceps'], ['Bíceps 2', 'Bíceps'], ['Bíceps 3', 'Bíceps'],
-  ['Pernas 1', 'Pernas'], ['Pernas 2', 'Pernas'], ['Pernas 3', 'Pernas'],
+  ['Agachamento teste', 'Pernas'], ['Leg press teste', 'Pernas'], ['Cadeira extensora teste', 'Pernas'],
+  ['Stiff teste', 'Pernas'], ['Mesa flexora teste', 'Pernas'], ['Cadeira flexora teste', 'Pernas'],
   ['Glúteos 1', 'Glúteos'], ['Glúteos 2', 'Glúteos'], ['Glúteos 3', 'Glúteos'],
+  ['Panturrilha 1', 'Panturrilhas'], ['Panturrilha 2', 'Panturrilhas'], ['Panturrilha 3', 'Panturrilhas'],
   ['Ombros 1', 'Ombros'], ['Ombros 2', 'Ombros'], ['Ombros 3', 'Ombros'],
   ['Antebraços 1', 'Antebraços'], ['Antebraços 2', 'Antebraços'], ['Antebraços 3', 'Antebraços'],
   ['Core 1', 'Core'], ['Core 2', 'Core'], ['Core 3', 'Core'],
@@ -70,18 +73,73 @@ describe('versioned workout generator', () => {
     expect(result.division).toBe(division);
     expect(result.dayLabels).toHaveLength(expectedDays);
     expect(new Set(result.exercises.map((exercise) => exercise.dayIndex)).size).toBe(expectedDays);
+    expect(result.exercises.some((exercise) => exercise.muscleGroup === 'Core')).toBe(false);
   });
 
   it('keeps an ABCDE plan inside the muscle sectors assigned to each day', () => {
     const result = generateWorkoutProposal(profile, splitCatalog, { division: 'ABCDE', focus: 'HYPERTROPHY' });
     const expectedGroups = [
-      new Set(['Peito', 'Tríceps']),
-      new Set(['Costas', 'Bíceps']),
-      new Set(['Pernas', 'Glúteos']),
-      new Set(['Ombros', 'Antebraços']),
-      new Set(['Bíceps', 'Tríceps', 'Core']),
+      new Set(['Peito']),
+      new Set(['Costas']),
+      new Set(['Pernas', 'Glúteos', 'Panturrilhas']),
+      new Set(['Ombros']),
+      new Set(['Bíceps', 'Tríceps', 'Antebraços']),
     ];
     result.exercises.forEach((exercise) => expect(expectedGroups[exercise.dayIndex].has(exercise.muscleGroup)).toBe(true));
+    expect(result.dayLabels[4]).toBe('Bíceps, tríceps e antebraços');
+  });
+
+  it('groups the ABCD exercises by sector instead of alternating chest and triceps', () => {
+    const orderedCatalog: GenerationExercise[] = [
+      { id: 'chest-1', name: 'Supino reto', muscleGroup: 'Peito', equipment: 'Barra ou halteres' },
+      { id: 'triceps-1', name: 'Tríceps no cabo', muscleGroup: 'Tríceps', equipment: 'Cabos' },
+      { id: 'chest-2', name: 'Supino máquina', muscleGroup: 'Peito', equipment: 'Máquinas' },
+      { id: 'triceps-2', name: 'Tríceps corda', muscleGroup: 'Tríceps', equipment: 'Cabos' },
+      { id: 'chest-3', name: 'Supino inclinado com halteres', muscleGroup: 'Peito', equipment: 'Halteres' },
+      { id: 'chest-4', name: 'Peck deck', muscleGroup: 'Peito', equipment: 'Máquinas' },
+    ];
+    const result = generateWorkoutProposal(profile, orderedCatalog, { division: 'ABCD', focus: 'HYPERTROPHY' });
+    const dayA = result.exercises.filter((exercise) => exercise.dayIndex === 0);
+    expect(dayA.map((exercise) => exercise.muscleGroup)).toEqual(['Peito', 'Peito', 'Peito', 'Peito', 'Tríceps', 'Tríceps']);
+    expect(dayA.slice(0, 3).map((exercise) => exercise.name)).toEqual(['Supino máquina', 'Supino inclinado com halteres', 'Supino reto']);
+  });
+
+  it.each(['AB', 'ABC', 'ABCD', 'ABCDE'] as const)('never returns to a muscle group after leaving its block in %s', (division) => {
+    const result = generateWorkoutProposal(profile, splitCatalog, { division, focus: 'HYPERTROPHY' });
+    result.dayLabels.forEach((_, dayIndex) => {
+      const groups = result.exercises.filter((exercise) => exercise.dayIndex === dayIndex).map((exercise) => exercise.muscleGroup);
+      const blocks = groups.filter((group, index) => index === 0 || group !== groups[index - 1]);
+      expect(new Set(blocks).size).toBe(blocks.length);
+    });
+  });
+
+  it.each([
+    ['AB', [['Peito', 'Costas', 'Ombros', 'Bíceps', 'Tríceps'], ['Pernas', 'Glúteos', 'Panturrilhas']]],
+    ['ABC', [['Peito', 'Ombros', 'Tríceps'], ['Costas', 'Bíceps', 'Antebraços'], ['Pernas', 'Glúteos', 'Panturrilhas']]],
+    ['ABCD', [['Peito', 'Tríceps'], ['Costas', 'Bíceps'], ['Pernas', 'Glúteos', 'Panturrilhas'], ['Ombros', 'Antebraços']]],
+    ['ABCDE', [['Peito'], ['Costas'], ['Pernas', 'Glúteos', 'Panturrilhas'], ['Ombros'], ['Bíceps', 'Tríceps', 'Antebraços']]],
+  ] as const)('uses the prescribed sector order in every day of %s', (division, expectedDays) => {
+    const result = generateWorkoutProposal(profile, splitCatalog, { division, focus: 'HYPERTROPHY' });
+    const actualDays = result.dayLabels.map((_, dayIndex) => {
+      const groups = result.exercises.filter((exercise) => exercise.dayIndex === dayIndex).map((exercise) => exercise.muscleGroup);
+      return groups.filter((group, index) => index === 0 || group !== groups[index - 1]);
+    });
+    expect(actualDays).toEqual(expectedDays);
+  });
+
+  it('orders a complete leg day as quadriceps, posterior thigh, glutes and calves', () => {
+    const legCatalog: GenerationExercise[] = [
+      { id: 'quad-1', name: 'Leg press 45°', muscleGroup: 'Pernas', equipment: 'Máquinas' },
+      { id: 'quad-2', name: 'Cadeira extensora', muscleGroup: 'Pernas', equipment: 'Máquinas' },
+      { id: 'posterior-1', name: 'Stiff com halteres', muscleGroup: 'Pernas', equipment: 'Halteres' },
+      { id: 'posterior-2', name: 'Mesa flexora', muscleGroup: 'Pernas', equipment: 'Máquinas' },
+      { id: 'glutes-1', name: 'Hip thrust na máquina', muscleGroup: 'Glúteos', equipment: 'Máquinas' },
+      { id: 'calves-1', name: 'Panturrilha em pé na máquina', muscleGroup: 'Panturrilhas', equipment: 'Máquinas' },
+    ];
+    const result = generateWorkoutProposal(profile, legCatalog, { division: 'ABCD', focus: 'HYPERTROPHY' });
+    expect(result.exercises.filter((exercise) => exercise.dayIndex === 2).map((exercise) => exercise.name)).toEqual([
+      'Leg press 45°', 'Cadeira extensora', 'Stiff com halteres', 'Mesa flexora', 'Hip thrust na máquina', 'Panturrilha em pé na máquina',
+    ]);
   });
 
   it('prioritizes familiar network-gym exercises for the chosen focus', () => {

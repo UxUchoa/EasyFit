@@ -13,7 +13,7 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { ensureExerciseCatalog, EXERCISE_CATALOG } from "./catalog";
+import { ensureExerciseCatalog, EXERCISE_CATALOG, STARTER_TEMPLATE } from "./catalog";
 
 const records = EXERCISE_CATALOG.map((exercise, index) => ({ id: `exercise-${index}`, ...exercise }));
 
@@ -44,6 +44,11 @@ describe("exercise catalog loading", () => {
 
   it("contains familiar exercises found in network gyms", () => {
     const names = new Set(EXERCISE_CATALOG.map((exercise) => exercise.name));
-    expect([...names]).toEqual(expect.arrayContaining(["Leg press 45°", "Cadeira extensora", "Puxada alta", "Remada baixa", "Supino máquina", "Tríceps corda"]));
+    expect([...names]).toEqual(expect.arrayContaining(["Leg press 45°", "Cadeira extensora", "Panturrilha em pé na máquina", "Puxada alta", "Remada baixa", "Supino máquina", "Tríceps corda"]));
+  });
+
+  it("keeps the legacy starter template free of core exercises", () => {
+    const coreNames = new Set<string>(EXERCISE_CATALOG.filter((exercise) => exercise.muscleGroup === "Core").map((exercise) => exercise.name));
+    expect(STARTER_TEMPLATE.days.flat().every((name) => !coreNames.has(name))).toBe(true);
   });
 });

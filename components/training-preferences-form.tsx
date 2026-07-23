@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const EQUIPMENT = ["Peso corporal", "Halteres", "Barra", "Máquinas", "Cabos", "Faixas elásticas"];
-const MUSCLE_GROUPS = ["Pernas", "Glúteos", "Peito", "Costas", "Ombros", "Bíceps", "Tríceps", "Antebraços", "Core"];
+const MUSCLE_GROUPS = ["Pernas", "Glúteos", "Panturrilhas", "Peito", "Costas", "Ombros", "Bíceps", "Tríceps", "Antebraços"];
 
 type Preferences = {
   objective: string;

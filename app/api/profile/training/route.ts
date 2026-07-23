@@ -8,7 +8,7 @@ import { hasTrustedOrigin } from "@/lib/security/request";
 export const runtime = "nodejs";
 
 const EQUIPMENT = ["Peso corporal", "Halteres", "Barra", "Máquinas", "Cabos", "Faixas elásticas"] as const;
-const MUSCLE_GROUPS = ["Pernas", "Glúteos", "Peito", "Costas", "Ombros", "Bíceps", "Tríceps", "Antebraços", "Core"] as const;
+const MUSCLE_GROUPS = ["Pernas", "Glúteos", "Panturrilhas", "Peito", "Costas", "Ombros", "Bíceps", "Tríceps", "Antebraços", "Core"] as const;
 const trainingProfileSchema = z.object({
   objective: z.enum(["lose", "maintain", "gain"]),
   trainingExperience: z.enum(["beginner", "intermediate", "advanced"]),

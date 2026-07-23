@@ -28,6 +28,9 @@ export const EXERCISE_CATALOG = [
   { name: "Cadeira extensora", muscleGroup: "Pernas", equipment: "Máquinas", instructions: "Alinhe o joelho ao eixo da máquina e estenda as pernas sem lançar a carga." },
   { name: "Mesa flexora", muscleGroup: "Pernas", equipment: "Máquinas", instructions: "Ajuste o rolo acima dos calcanhares e flexione os joelhos mantendo o quadril apoiado." },
   { name: "Cadeira flexora", muscleGroup: "Pernas", equipment: "Máquinas", instructions: "Ajuste o encosto e flexione os joelhos com o tronco apoiado e movimento controlado." },
+  { name: "Panturrilha em pé na máquina", muscleGroup: "Panturrilhas", equipment: "Máquinas", instructions: "Apoie a parte da frente dos pés, mantenha os joelhos estáveis e eleve os calcanhares com controle." },
+  { name: "Panturrilha no leg press", muscleGroup: "Panturrilhas", equipment: "Máquinas", instructions: "Mantenha apenas a parte da frente dos pés na plataforma e movimente os tornozelos sem flexionar os joelhos." },
+  { name: "Panturrilha sentada", muscleGroup: "Panturrilhas", equipment: "Máquinas", instructions: "Ajuste o apoio sobre as coxas e eleve os calcanhares usando uma amplitude confortável." },
   { name: "Hack squat", muscleGroup: "Pernas", equipment: "Máquinas", instructions: "Apoie costas e ombros, mantenha os pés firmes e use uma amplitude confortável." },
   { name: "Agachamento no smith", muscleGroup: "Pernas", equipment: "Máquinas", instructions: "Posicione os pés de forma estável e desça com controle mantendo os joelhos alinhados." },
   { name: "Agachamento goblet", muscleGroup: "Pernas", equipment: "Halteres", instructions: "Segure o halter junto ao peito e controle a descida." },
@@ -91,7 +94,7 @@ export async function ensureExerciseCatalog() {
 export const STARTER_TEMPLATE = {
   name: "Corpo inteiro · 3 dias",
   days: [
-    ["Agachamento livre", "Flexão de braços", "Remada sentada", "Prancha"],
+    ["Agachamento livre", "Flexão de braços", "Remada sentada", "Panturrilha em pé na máquina"],
     ["Avanço alternado", "Supino reto", "Puxada frontal", "Elevação pélvica"],
     ["Agachamento livre", "Desenvolvimento de ombros", "Rosca direta", "Tríceps no cabo"],
   ],

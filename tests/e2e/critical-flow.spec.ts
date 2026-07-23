@@ -215,7 +215,7 @@ test('cadastro, onboarding e adição rápida preservam o fluxo principal', asyn
   await page.getByRole('button', { name: 'Gerar sugestão revisável' }).click();
   await expect(page.getByRole('heading', { name: 'Revisão obrigatória antes de ativar' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Revisão obrigatória antes de ativar' })).toContainText('Força');
-  await expect(page.getByRole('region', { name: 'Revisão obrigatória antes de ativar' })).toContainText('E · Braços e core');
+  await expect(page.getByRole('region', { name: 'Revisão obrigatória antes de ativar' })).toContainText('E · Bíceps, tríceps e antebraços');
   await page.getByLabel('Nome do plano').fill('Plano E2E revisado');
   await page.getByRole('button', { name: 'Salvar plano' }).click();
   const generatedPlan = page.getByRole('article').filter({ hasText: 'Plano E2E revisado' });
