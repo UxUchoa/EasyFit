@@ -45,4 +45,15 @@ describe("profile estimates", () => {
       fatGrams: 64,
     });
   });
+
+  it("uses total daily expenditure, not basal expenditure, as the goal reference", () => {
+    const bmr = calculateBmr({ ...baseInput, activityLevel: "sedentary" });
+    const tdee = calculateTdee({ ...baseInput, activityLevel: "sedentary" });
+    const lossTarget = suggestCalorieTarget(tdee, "lose");
+
+    expect(lossTarget).toBeLessThan(tdee);
+    expect(lossTarget).toBeGreaterThan(bmr);
+    expect(suggestCalorieTarget(tdee, "maintain")).toBe(Math.round(tdee));
+    expect(suggestCalorieTarget(tdee, "gain")).toBeGreaterThan(tdee);
+  });
 });

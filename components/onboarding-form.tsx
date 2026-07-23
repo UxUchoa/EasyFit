@@ -70,7 +70,8 @@ export function OnboardingForm() {
           <div className="field"><label htmlFor="currentWeightKg">Peso atual (kg)</label><input id="currentWeightKg" name="currentWeightKg" type="number" inputMode="decimal" min="30" max="350" step="0.1" required /></div>
           <div className="field col-span-2 sm:col-span-1"><label htmlFor="desiredWeightKg">Peso desejado (kg)</label><input id="desiredWeightKg" name="desiredWeightKg" type="number" inputMode="decimal" min="30" max="350" step="0.1" required /></div>
         </div>
-        <div className="field"><label htmlFor="activityLevel">Nível de atividade no dia a dia</label><select id="activityLevel" name="activityLevel" defaultValue="moderate" required><option value="sedentary">Sedentário</option><option value="light">Levemente ativo</option><option value="moderate">Moderadamente ativo</option><option value="very_active">Muito ativo</option></select></div>
+        <div className="field"><label htmlFor="activityLevel">Nível de atividade no dia a dia</label><select id="activityLevel" name="activityLevel" defaultValue="" required><option value="" disabled>Selecione seu nível real</option><option value="sedentary">Sedentário — pouca atividade física</option><option value="light">Levemente ativo — atividade leve</option><option value="moderate">Moderadamente ativo — atividade frequente</option><option value="very_active">Muito ativo — rotina fisicamente intensa</option></select></div>
+        <p className="-mt-2 text-xs leading-5 text-[#69746c]">Essa escolha altera bastante a estimativa de manutenção. Considere sua rotina inteira, não apenas os dias em que treina.</p>
         <input type="hidden" name="timezone" value={Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Sao_Paulo"} />
       </fieldset>
 
