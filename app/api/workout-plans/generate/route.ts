@@ -27,8 +27,7 @@ export async function POST(request: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Sessão expirada.' }, { status: 401 });
   const profile = generationProfile(session.user.profile);
   if (!profile) return NextResponse.json({ error: 'Complete as preferências de treino antes de gerar uma sugestão.' }, { status: 422 });
-  await ensureExerciseCatalog();
-  const catalog = await db.exercise.findMany({ orderBy: [{ muscleGroup: 'asc' }, { name: 'asc' }] });
+  const catalog = await ensureExerciseCatalog() ?? await db.exercise.findMany({ orderBy: [{ muscleGroup: 'asc' }, { name: 'asc' }] });
   const proposal = generateWorkoutProposal(profile, catalog);
   await db.auditEvent.create({ data: { actorUserId: session.userId, action: 'workout_plan.generate.preview', objectType: 'WorkoutPlan', result: 'SUCCESS', correlationId: randomUUID(), context: { ruleVersion: proposal.ruleVersion, days: profile.trainingDaysPerWeek, suggestedExercises: proposal.exercises.length, hasRestrictions: proposal.inputs.hasPhysicalRestrictions } } });
   return NextResponse.json({ proposal });

@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
@@ -44,7 +45,7 @@ export async function createSession(userId: string) {
   return session.id;
 }
 
-export async function getCurrentSession() {
+export const getCurrentSession = cache(async function getCurrentSession() {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
 
@@ -90,7 +91,7 @@ export async function getCurrentSession() {
     session.lastActiveAt = lastActiveAt;
   }
   return session;
-}
+});
 
 export async function requireUser() {
   const session = await getCurrentSession();

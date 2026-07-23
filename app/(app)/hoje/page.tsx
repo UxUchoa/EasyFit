@@ -4,7 +4,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { logicalDateKey, parseLogicalDate } from "@/lib/diary/date";
-import { findDayLog } from "@/lib/diary/service";
+import { findTodaySummaryDay } from "@/lib/diary/service";
 import { aggregateNutrition } from "@/lib/diary/nutrition";
 import { STANDARD_MEALS, mealLabel } from "@/lib/diary/constants";
 
@@ -12,18 +12,21 @@ export const metadata: Metadata = { title: "Hoje" };
 
 export default async function TodayPage() {
   const user = await requireUser();
-  const goal = await db.goalPlan.findFirst({
-    where: { userId: user.id, validUntil: null },
-    orderBy: { validFrom: "desc" },
-  });
   const firstName = user.profile?.displayName.split(" ")[0] ?? user.username;
-  const calorieTarget = goal?.calorieTarget ?? 0;
   const date = logicalDateKey(
     new Date(),
     user.profile?.timezone ?? "America/Sao_Paulo",
     user.profile?.dayClosesAtMinutes ?? 0,
   );
-  const day = await findDayLog(user.id, parseLogicalDate(date)!);
+  const [goal, day] = await Promise.all([
+    db.goalPlan.findFirst({
+      where: { userId: user.id, validUntil: null },
+      orderBy: { validFrom: "desc" },
+      select: { calorieTarget: true, proteinGrams: true, carbohydrateGrams: true, fatGrams: true },
+    }),
+    findTodaySummaryDay(user.id, parseLogicalDate(date)!),
+  ]);
+  const calorieTarget = goal?.calorieTarget ?? 0;
   const entries = day?.meals.flatMap((meal) => meal.entries.filter((entry) => entry.kind === "CONSUMED")) ?? [];
   const totals = aggregateNutrition(
     entries.map((entry) => ({
@@ -50,7 +53,7 @@ export default async function TodayPage() {
           <p className="mt-3 text-[#657168]">Acompanhe o realizado sem cobranças ou julgamentos.</p>
         </div>
         <p className="rounded-full border border-[#dfe5dc] bg-white px-4 py-2 text-sm font-bold">
-          {new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "short" }).format(new Date())}
+          {new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", weekday: "long", day: "2-digit", month: "short" }).format(new Date(`${date}T12:00:00.000Z`))}
         </p>
       </div>
 

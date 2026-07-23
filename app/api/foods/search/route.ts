@@ -18,9 +18,23 @@ async function withConflictMetadata(userId: string, foods: SearchFood[]) {
     const key = foodConflictKey(food);
     const alternatives = groups.get(key);
     return {
-      ...food,
+      id: food.id,
+      name: food.name,
+      brand: food.brand,
+      baseQuantity: food.baseQuantity.toString(),
+      baseUnit: food.baseUnit,
+      calories: food.calories.toString(),
+      proteinGrams: food.proteinGrams?.toString() ?? null,
+      carbohydrateGrams: food.carbohydrateGrams?.toString() ?? null,
+      fatGrams: food.fatGrams?.toString() ?? null,
+      source: food.source,
+      portions: food.portions.map((portion) => ({
+        id: portion.id,
+        name: portion.name,
+        unit: portion.unit,
+        quantityInBaseUnit: portion.quantityInBaseUnit.toString(),
+      })),
       favorite: food.favorites.length > 0,
-      favorites: undefined,
       conflictKey: alternatives ? key : null,
       conflictSize: alternatives?.length ?? 0,
       preferredSource: alternatives ? selectedByKey.get(key) === food.id : false,
@@ -30,7 +44,16 @@ async function withConflictMetadata(userId: string, foods: SearchFood[]) {
 
 async function cacheOpenFoodFactsProducts(userId: string, results: Awaited<ReturnType<typeof searchOpenFoodFacts>>) {
   const now = new Date();
+  const existing = await db.food.findMany({
+    where: { barcode: { in: results.map((result) => result.barcode) }, source: "OPEN_FOOD_FACTS" },
+    include: { portions: true, favorites: { where: { userId }, select: { userId: true } } },
+  });
+  const freshByBarcode = new Map(existing
+    .filter((food) => !food.sourceExpiresAt || food.sourceExpiresAt > now)
+    .map((food) => [food.barcode, food]));
   return Promise.all(results.map((result) => {
+    const fresh = freshByBarcode.get(result.barcode);
+    if (fresh) return fresh;
     const { barcode, sourceReference, ...nutrition } = result;
     return db.food.upsert({
       where: { barcode_source: { barcode, source: "OPEN_FOOD_FACTS" } },
@@ -58,6 +81,7 @@ export async function GET(request: NextRequest) {
   if (!session) return NextResponse.json({ error: "Sessão expirada." }, { status: 401 });
   const query = request.nextUrl.searchParams.get("q")?.trim().slice(0, 100) ?? "";
   const scope = request.nextUrl.searchParams.get("scope");
+  const searchExternal = request.nextUrl.searchParams.get("external") === "1";
   if (!scope && query.length < 2) return NextResponse.json({ foods: [] });
 
   if (scope === "recent") {
@@ -90,7 +114,7 @@ export async function GET(request: NextRequest) {
   });
   let externalSearchUnavailable = false;
   let externalFoods: SearchFood[] = [];
-  if (!scope && query.length >= 2) {
+  if (!scope && searchExternal && query.length >= 2) {
     try {
       const results = await searchOpenFoodFacts(query);
       externalFoods = await cacheOpenFoodFactsProducts(session.userId, results);
@@ -102,5 +126,6 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     foods: await withConflictMetadata(session.userId, [...merged.values()].slice(0, 30)),
     externalSearchUnavailable,
+    canSearchExternal: !scope && !searchExternal && query.length >= 2,
   });
 }

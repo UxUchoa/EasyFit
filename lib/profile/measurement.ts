@@ -1,13 +1,11 @@
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
+import { parseLogicalDate } from '@/lib/diary/date';
 
 const optionalCentimeters = z.union([z.coerce.number().min(10).max(300), z.literal(''), z.null()]).optional().transform((value) => value === '' || value === undefined ? null : value);
 
 export const measurementSchema = z.object({
-  measuredAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
-    const parsed = new Date(value + 'T00:00:00.000Z');
-    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
-  }, 'Data inválida.'),
+  measuredAt: z.string().refine((value) => parseLogicalDate(value) !== null, 'Data inválida.'),
   weightKg: z.coerce.number().min(30).max(350),
   waistCm: optionalCentimeters,
   hipCm: optionalCentimeters,
@@ -16,9 +14,16 @@ export const measurementSchema = z.object({
   thighCm: optionalCentimeters,
 });
 
+export function measurementSchemaThrough(maximumDate: string) {
+  return measurementSchema.refine(
+    (value) => value.measuredAt <= maximumDate,
+    { message: 'A data da medição não pode estar no futuro.', path: ['measuredAt'] },
+  );
+}
+
 export function measurementData(input: z.infer<typeof measurementSchema>) {
   return {
-    measuredAt: new Date(input.measuredAt + 'T00:00:00.000Z'),
+    measuredAt: parseLogicalDate(input.measuredAt)!,
     weightKg: input.weightKg,
     waistCm: input.waistCm,
     hipCm: input.hipCm,

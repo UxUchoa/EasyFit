@@ -56,3 +56,79 @@ export function findDayLog(userId: string, logicalDate: Date) {
     },
   });
 }
+
+export function findDiaryDay(userId: string, logicalDate: Date) {
+  return db.dayLog.findUnique({
+    where: { userId_logicalDate: { userId, logicalDate } },
+    select: {
+      meals: {
+        orderBy: { position: "asc" },
+        select: {
+          id: true,
+          kind: true,
+          slug: true,
+          customName: true,
+          entries: {
+            orderBy: { createdAt: "asc" },
+            select: {
+              id: true,
+              updatedAt: true,
+              kind: true,
+              quantity: true,
+              unit: true,
+              snapshotName: true,
+              snapshotBrand: true,
+              snapshotCalories: true,
+              snapshotProtein: true,
+              snapshotCarbohydrate: true,
+              snapshotFat: true,
+              macrosComplete: true,
+              revisions: {
+                orderBy: { correctedAt: "desc" },
+                take: 10,
+                select: {
+                  id: true,
+                  previousQuantity: true,
+                  nextQuantity: true,
+                  reason: true,
+                  correctedAt: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+export function findTodaySummaryDay(userId: string, logicalDate: Date) {
+  return db.dayLog.findUnique({
+    where: { userId_logicalDate: { userId, logicalDate } },
+    select: {
+      meals: {
+        orderBy: { position: "asc" },
+        select: {
+          slug: true,
+          customName: true,
+          entries: {
+            select: {
+              kind: true,
+              snapshotCalories: true,
+              snapshotProtein: true,
+              snapshotCarbohydrate: true,
+              snapshotFat: true,
+              macrosComplete: true,
+            },
+          },
+        },
+      },
+      workouts: {
+        where: { status: { in: ["IN_PROGRESS", "PLANNED"] } },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { id: true, name: true, status: true },
+      },
+    },
+  });
+}

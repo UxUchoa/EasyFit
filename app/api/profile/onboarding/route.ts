@@ -3,24 +3,22 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { getCurrentSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
+import { calendarDateKey, isSupportedTimeZone, parseLogicalDate } from "@/lib/diary/date";
 import {
-  ageOnDate,
   calculateBmi,
   calculateBmr,
   calculateTdee,
   suggestCalorieTarget,
   suggestMacros,
 } from "@/lib/profile/calculations";
+import { birthDateIsAllowed, birthDateSchema } from "@/lib/profile/birth-date";
 import { hasTrustedOrigin } from "@/lib/security/request";
 
 export const runtime = "nodejs";
 
 const onboardingSchema = z.object({
   displayName: z.string().trim().min(2).max(80),
-  birthDate: z.coerce.date().refine((value) => {
-    const age = ageOnDate(value);
-    return age >= 16 && age <= 100;
-  }, "A idade precisa estar entre 16 e 100 anos."),
+  birthDate: birthDateSchema,
   biologicalSex: z.enum(["female", "male"]),
   heightCm: z.coerce.number().min(120).max(230),
   currentWeightKg: z.coerce.number().min(30).max(350),
@@ -30,7 +28,7 @@ const onboardingSchema = z.object({
   trainingExperience: z.enum(["beginner", "intermediate", "advanced"]),
   trainingDaysPerWeek: z.coerce.number().int().min(1).max(7),
   physicalRestrictions: z.string().trim().max(1000).optional(),
-  timezone: z.string().trim().min(3).max(64).default("America/Sao_Paulo"),
+  timezone: z.string().trim().min(3).max(64).refine(isSupportedTimeZone, "Fuso horário inválido.").default("America/Sao_Paulo"),
 });
 
 export async function POST(request: NextRequest) {
@@ -48,22 +46,25 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
+  const now = new Date();
+  if (!birthDateIsAllowed(parsed.data.birthDate, parsed.data.timezone, now)) {
+    return NextResponse.json({ error: "A idade precisa estar entre 16 e 100 anos." }, { status: 400 });
+  }
 
+  const measurementDate = parseLogicalDate(calendarDateKey(now, parsed.data.timezone))!;
   const input = {
     birthDate: parsed.data.birthDate,
     biologicalSex: parsed.data.biologicalSex,
     heightCm: parsed.data.heightCm,
     weightKg: parsed.data.currentWeightKg,
     activityLevel: parsed.data.activityLevel,
+    referenceDate: measurementDate,
   };
   const bmi = calculateBmi(input.weightKg, input.heightCm);
   const bmr = calculateBmr(input);
   const tdee = calculateTdee(input);
   const calorieTarget = suggestCalorieTarget(tdee, parsed.data.objective);
   const macros = suggestMacros(calorieTarget, input.weightKg);
-  const now = new Date();
-  const measurementDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-
   await db.$transaction(async (tx) => {
     await tx.profile.upsert({
       where: { userId: session.userId },

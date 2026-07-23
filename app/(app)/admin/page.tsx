@@ -3,14 +3,16 @@ import { AdminAccessManager } from '@/components/admin-access-manager';
 import { requireStaff } from '@/lib/admin/auth';
 import { canViewAudit } from '@/lib/admin/policy';
 import { db } from '@/lib/db';
+import { parseLogicalDate } from '@/lib/diary/date';
 import { estimatePercentileUpperBound } from '@/lib/observability/metrics';
 
 export const metadata: Metadata = { title: 'Operações' };
 
 function dateBoundary(value: string | undefined, end = false) {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const date = new Date(`${value}T${end ? '23:59:59.999' : '00:00:00.000'}Z`);
-  return Number.isNaN(date.getTime()) ? null : date;
+  if (!value) return null;
+  const date = parseLogicalDate(value);
+  if (!date || !end) return date;
+  return new Date(date.getTime() + 86_400_000 - 1);
 }
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {

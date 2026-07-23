@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getCurrentSession } from "@/lib/auth/session";
 import { parseLogicalDate } from "@/lib/diary/date";
 import { calculateEntryNutrition } from "@/lib/diary/nutrition";
+import { diaryEntryResponse } from "@/lib/diary/response";
 import { ensureDayLog } from "@/lib/diary/service";
 import { db } from "@/lib/db";
 import { hasTrustedOrigin } from "@/lib/security/request";
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       if (existing.meal.dayLog.userId !== session.userId) {
         return NextResponse.json({ error: "Não foi possível concluir a operação." }, { status: 409 });
       }
-      return NextResponse.json({ entry: existing, replayed: true });
+      return NextResponse.json({ entry: diaryEntryResponse(existing), replayed: true });
     }
   }
 
@@ -214,5 +215,5 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return created;
   });
 
-  return NextResponse.json({ entry }, { status: 201 });
+  return NextResponse.json({ entry: diaryEntryResponse(entry) }, { status: 201 });
 }

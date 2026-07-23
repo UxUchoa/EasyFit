@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   if (!hasTrustedOrigin(request)) return NextResponse.json({ error: "Solicitação não autorizada." }, { status: 403 });
   const session = await getCurrentSession();
   if (!session) return NextResponse.json({ error: "Sessão expirada." }, { status: 401 });
-  await ensureExerciseCatalog();
+  const catalog = await ensureExerciseCatalog() ?? await db.exercise.findMany();
   const existing = await db.workoutPlan.findFirst({
     where: { userId: session.userId, name: STARTER_TEMPLATE.name, active: true },
     select: { id: true },
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   if (existing) return NextResponse.json({ planId: existing.id, existing: true });
 
   const names = STARTER_TEMPLATE.days.flat();
-  const exercises = await db.exercise.findMany({ where: { name: { in: [...names] } } });
+  const exercises = catalog.filter((exercise) => names.includes(exercise.name as typeof names[number]));
   const byName = new Map(exercises.map((exercise) => [exercise.name, exercise]));
   const planExercises = STARTER_TEMPLATE.days.flatMap((day, dayIndex) =>
     day.map((name, position) => ({

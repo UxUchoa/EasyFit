@@ -27,7 +27,21 @@ type BarcodeDetectorConstructor = new (options: { formats: string[] }) => Barcod
 type BarcodeScannerProps = {
   date: string;
   meals: Array<{ slug: string; label: string }>;
-  onAdded(): void;
+  onAdded(mealSlug: string, entry: {
+    id: string;
+    updatedAt: string;
+    kind: "PLANNED" | "CONSUMED";
+    name: string;
+    brand: string | null;
+    quantity: number;
+    unit: string;
+    calories: number;
+    proteinGrams: number | null;
+    carbohydrateGrams: number | null;
+    fatGrams: number | null;
+    macrosComplete: boolean;
+    revisions: [];
+  }): void;
   onManualSearch(): void;
   onManualRegister(code: string): void;
 };
@@ -158,19 +172,21 @@ export function BarcodeScanner({ date, meals, onAdded, onManualSearch, onManualR
     setPending(true);
     setError("");
     const data = new FormData(event.currentTarget);
+    const mealSlug = String(data.get("mealSlug") ?? "");
     const response = await fetch(`/api/days/${date}/entries`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
       body: JSON.stringify({
-        mealSlug: data.get("mealSlug"),
+        mealSlug,
         kind: data.get("kind"),
         foodId: food.id,
         quantity: Number(data.get("quantity")),
         unit: data.get("unit"),
       }),
     }).catch(() => null);
-    if (!response?.ok) setError("Não foi possível adicionar o produto ao diário.");
-    else onAdded();
+    const result = response ? await response.json().catch(() => ({})) as { entry?: Parameters<BarcodeScannerProps["onAdded"]>[1] } : null;
+    if (!response?.ok || !result?.entry) setError("Não foi possível adicionar o produto ao diário.");
+    else onAdded(mealSlug, result.entry);
     setPending(false);
   }
 

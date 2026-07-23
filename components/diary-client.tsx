@@ -59,9 +59,10 @@ function formatNumber(value: number, digits = 0) {
   return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: digits }).format(value);
 }
 
-export function DiaryClient({ date, today, userScope, meals, initialBarcode = "", initialScanner = false }: { date: string; today: string; userScope: string; meals: DiaryMeal[]; initialBarcode?: string; initialScanner?: boolean }) {
+export function DiaryClient({ date, today, userScope, meals: initialMeals, initialBarcode = "", initialScanner = false }: { date: string; today: string; userScope: string; meals: DiaryMeal[]; initialBarcode?: string; initialScanner?: boolean }) {
   const router = useRouter();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const [meals, setMeals] = useState(initialMeals);
   const [panel, setPanel] = useState<"quick" | "search" | "private" | "meal" | "barcode" | null>(initialBarcode ? "private" : initialScanner ? "barcode" : null);
   const [mealSlug, setMealSlug] = useState(meals[0]?.slug ?? "cafe-da-manha");
   const [entryKind, setEntryKind] = useState<"PLANNED" | "CONSUMED">("CONSUMED");
@@ -70,6 +71,8 @@ export function DiaryClient({ date, today, userScope, meals, initialBarcode = ""
   const [query, setQuery] = useState("");
   const [foods, setFoods] = useState<FoodResult[]>([]);
   const [foodListLoaded, setFoodListLoaded] = useState(false);
+  const [canSearchExternal, setCanSearchExternal] = useState(false);
+  const [searchedExternal, setSearchedExternal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftRestored, setDraftRestored] = useState(false);
 
@@ -131,13 +134,15 @@ export function DiaryClient({ date, today, userScope, meals, initialBarcode = ""
       setQuery("");
       setFoods([]);
       setFoodListLoaded(false);
+      setCanSearchExternal(false);
+      setSearchedExternal(false);
     }
     setPanel(next);
   }
 
   function closePanel() {
     setPanel(null);
-    if (initialBarcode || initialScanner) router.replace(`/dieta?date=${date}`, { scroll: false });
+    if (initialBarcode || initialScanner) window.history.replaceState(null, "", `/dieta?date=${date}`);
   }
 
   async function postEntry(payload: Record<string, unknown>, label = 'Novo registro alimentar') {
@@ -162,13 +167,19 @@ export function DiaryClient({ date, today, userScope, meals, initialBarcode = ""
         },
       body: JSON.stringify(body),
       });
-      const result = (await response.json()) as { error?: string };
+      const result = (await response.json()) as { entry?: DiaryEntry; error?: string };
       if (!response.ok) {
         setError(result.error ?? "Não foi possível adicionar o alimento.");
         return false;
       }
+      if (!result.entry) {
+        setError("O servidor não retornou o registro criado.");
+        return false;
+      }
+      setMeals((items) => items.map((meal) => meal.slug === mealSlug
+        ? { ...meal, entries: meal.entries.some((entry) => entry.id === result.entry!.id) ? meal.entries : [...meal.entries, result.entry!] }
+        : meal));
       setPanel(null);
-      router.refresh();
       return true;
     } catch {
       return await queueLocally();
@@ -218,12 +229,39 @@ export function DiaryClient({ date, today, userScope, meals, initialBarcode = ""
     setError("");
     try {
       const response = await fetch(`/api/foods/search?q=${encodeURIComponent(query)}`);
-      const result = (await response.json()) as { foods?: FoodResult[]; error?: string; externalSearchUnavailable?: boolean };
+      let result = (await response.json()) as { foods?: FoodResult[]; error?: string; externalSearchUnavailable?: boolean; canSearchExternal?: boolean };
       if (!response.ok) setError(result.error ?? "A busca falhou.");
+      if (response.ok && (result.foods?.length ?? 0) === 0) {
+        const externalResponse = await fetch(`/api/foods/search?q=${encodeURIComponent(query)}&external=1`);
+        result = (await externalResponse.json()) as typeof result;
+        if (!externalResponse.ok) setError(result.error ?? "A busca na base aberta falhou.");
+        setSearchedExternal(true);
+      } else {
+        setSearchedExternal(false);
+      }
       setFoods(result.foods ?? []);
+      setCanSearchExternal(Boolean(result.canSearchExternal));
       if (result.externalSearchUnavailable) setError("A base aberta está temporariamente indisponível; exibimos apenas alimentos já salvos.");
     } catch {
       setError("Não foi possível buscar agora.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function searchExternalFoods() {
+    setPending(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/foods/search?q=${encodeURIComponent(query)}&external=1`);
+      const result = (await response.json()) as { foods?: FoodResult[]; error?: string; externalSearchUnavailable?: boolean };
+      if (!response.ok) setError(result.error ?? "A busca na base aberta falhou.");
+      setFoods(result.foods ?? []);
+      setCanSearchExternal(false);
+      setSearchedExternal(true);
+      if (result.externalSearchUnavailable) setError("A base aberta está temporariamente indisponível; exibimos apenas alimentos já salvos.");
+    } catch {
+      setError("Não foi possível consultar a base aberta agora.");
     } finally {
       setPending(false);
     }
@@ -239,6 +277,8 @@ export function DiaryClient({ date, today, userScope, meals, initialBarcode = ""
       if (!response.ok) setError(result.error ?? "Não foi possível carregar os alimentos.");
       setFoods(result.foods ?? []);
       setQuery("");
+      setCanSearchExternal(false);
+      setSearchedExternal(false);
     } catch {
       setError("Não foi possível carregar os alimentos agora.");
     } finally {
@@ -264,9 +304,12 @@ export function DiaryClient({ date, today, userScope, meals, initialBarcode = ""
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sourceDate: shiftedDate(date, -1), sourceMealSlug, targetMealSlug: sourceMealSlug }),
     }).catch(() => null);
-    const result = response ? await response.json().catch(() => ({})) as { error?: string; copiedEntries?: number } : null;
+    const result = response ? await response.json().catch(() => ({})) as { error?: string; copiedEntries?: number; entries?: Array<{ mealSlug: string; entry: DiaryEntry }> } : null;
     if (!response?.ok) setError(result?.error ?? "Não foi possível copiar os registros.");
-    else router.refresh();
+    else setMeals((items) => items.map((meal) => ({
+      ...meal,
+      entries: [...meal.entries, ...(result?.entries ?? []).filter((item) => item.mealSlug === meal.slug).map((item) => item.entry)],
+    })));
     setPending(false);
   }
 
@@ -316,7 +359,7 @@ export function DiaryClient({ date, today, userScope, meals, initialBarcode = ""
     setError("");
     const response = await fetch(`/api/entries/${id}`, { method: "DELETE" }).catch(() => null);
     if (!response?.ok) setError("Não foi possível remover o registro.");
-    else router.refresh();
+    else setMeals((items) => items.map((meal) => ({ ...meal, entries: meal.entries.filter((entry) => entry.id !== id) })));
     setPending(false);
   }
 
@@ -324,8 +367,11 @@ export function DiaryClient({ date, today, userScope, meals, initialBarcode = ""
     setPending(true);
     setError("");
     const response = await fetch(`/api/entries/${id}/consume`, { method: "POST" }).catch(() => null);
-    if (!response?.ok) setError("Não foi possível confirmar o consumo.");
-    else router.refresh();
+    const result = response ? await response.json().catch(() => ({})) as { entry?: DiaryEntry } : null;
+    if (!response?.ok || !result?.entry) setError("Não foi possível confirmar o consumo.");
+    else setMeals((items) => items.map((meal) => meal.entries.some((entry) => entry.id === id)
+      ? { ...meal, entries: meal.entries.some((entry) => entry.id === result.entry!.id) ? meal.entries : [...meal.entries, result.entry!] }
+      : meal));
     setPending(false);
   }
 
@@ -338,10 +384,11 @@ export function DiaryClient({ date, today, userScope, meals, initialBarcode = ""
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: data.get("name") }),
     }).catch(() => null);
-    if (!response?.ok) setError("Não foi possível criar a refeição.");
+    const result = response ? await response.json().catch(() => ({})) as { meal?: { id: string; slug: string; customName: string | null } } : null;
+    if (!response?.ok || !result?.meal) setError("Não foi possível criar a refeição.");
     else {
       setPanel(null);
-      router.refresh();
+      setMeals((items) => [...items, { id: result.meal!.id, slug: result.meal!.slug, label: result.meal!.customName ?? "Refeição", custom: true, entries: [] }]);
     }
     setPending(false);
   }
@@ -353,8 +400,17 @@ export function DiaryClient({ date, today, userScope, meals, initialBarcode = ""
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     }).catch(() => null);
-    if (!response?.ok) setError("Não foi possível atualizar a refeição.");
-    else router.refresh();
+    const result = response ? await response.json().catch(() => ({})) as { meal?: { id: string; customName: string | null; position: number } } : null;
+    if (!response?.ok || !result?.meal) setError("Não foi possível atualizar a refeição.");
+    else setMeals((items) => {
+      const updated = items.map((meal) => meal.id === id ? { ...meal, label: result.meal!.customName ?? meal.label } : meal);
+      if (data.position === undefined) return updated;
+      const from = updated.findIndex((meal) => meal.id === id);
+      if (from < 0) return updated;
+      const [moved] = updated.splice(from, 1);
+      updated.splice(Math.min(Math.max(0, result.meal!.position), updated.length), 0, moved);
+      return [...updated];
+    });
     setPending(false);
   }
 
@@ -362,7 +418,7 @@ export function DiaryClient({ date, today, userScope, meals, initialBarcode = ""
     setPending(true);
     const response = await fetch(`/api/meals/${id}`, { method: "DELETE" }).catch(() => null);
     if (!response?.ok) setError("Não foi possível excluir a refeição.");
-    else router.refresh();
+    else setMeals((items) => items.filter((meal) => meal.id !== id));
     setPending(false);
   }
 
@@ -381,10 +437,21 @@ export function DiaryClient({ date, today, userScope, meals, initialBarcode = ""
     try {
       if (!navigator.onLine) { await queueLocally(); return; }
       const response = await fetch(`/api/entries/${entry.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const result = await response.json().catch(() => ({})) as { error?: string; conflict?: OfflineConflict };
+      const result = await response.json().catch(() => ({})) as { entry?: DiaryEntry; error?: string; conflict?: OfflineConflict };
       if (response.status === 409 && result.conflict) { await queueLocally(result.conflict, result.error ?? null); return; }
       if (!response.ok) { setError(result.error ?? "Não foi possível atualizar a quantidade."); return; }
-      setEditingId(null); router.refresh();
+      if (!result.entry) { setError("O servidor não retornou o registro atualizado."); return; }
+      setMeals((items) => items.map((meal) => ({
+        ...meal,
+        entries: meal.entries.map((candidate) => {
+          if (candidate.id !== entry.id) return candidate;
+          const revisions = [...result.entry!.revisions, ...candidate.revisions]
+            .filter((revision, index, all) => all.findIndex((item) => item.id === revision.id) === index)
+            .slice(0, 10);
+          return { ...result.entry!, revisions };
+        }),
+      })));
+      setEditingId(null);
     } catch { await queueLocally(); }
     finally { setPending(false); }
   }
@@ -431,7 +498,13 @@ export function DiaryClient({ date, today, userScope, meals, initialBarcode = ""
           {panel === "barcode" && <BarcodeScanner
             date={date}
             meals={meals.map((meal) => ({ slug: meal.slug, label: meal.label }))}
-            onAdded={() => router.replace(`/dieta?date=${date}`)}
+            onAdded={(slug, entry) => {
+              setMeals((items) => items.map((meal) => meal.slug === slug
+                ? { ...meal, entries: meal.entries.some((candidate) => candidate.id === entry.id) ? meal.entries : [...meal.entries, entry] }
+                : meal));
+              setPanel(null);
+              window.history.replaceState(null, "", `/dieta?date=${date}`);
+            }}
             onManualSearch={() => openPanel("search")}
             onManualRegister={(barcode) => router.replace(`/dieta?date=${date}&barcode=${encodeURIComponent(barcode)}`)}
           />}
@@ -487,8 +560,10 @@ export function DiaryClient({ date, today, userScope, meals, initialBarcode = ""
                   <h3 className="font-black">Produtos disponíveis</h3>
                   <p className="mt-1 text-xs text-[#657168]">{pending && foods.length === 0 ? "Carregando catálogo…" : `${foods.length} produto${foods.length === 1 ? "" : "s"}`}</p>
                 </div>
-                <span className="rounded-full bg-[#edf4eb] px-3 py-1 text-xs font-black text-[#166534]">Open Food Facts + salvos</span>
+                <span className="rounded-full bg-[#edf4eb] px-3 py-1 text-xs font-black text-[#166534]">{searchedExternal ? "Open Food Facts + salvos" : "Resultados salvos"}</span>
               </div>
+
+              {canSearchExternal && <button type="button" className="button-secondary mt-3 w-full min-h-12" onClick={searchExternalFoods} disabled={pending}>Buscar também na base aberta</button>}
           
               <div className="mt-4 grid gap-4">
                 {foods.map((food) => (

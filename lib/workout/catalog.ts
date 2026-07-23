@@ -39,8 +39,19 @@ export const EXERCISE_CATALOG = [
 ] as const;
 
 export async function ensureExerciseCatalog() {
+  const catalog = await db.exercise.findMany({
+    orderBy: [{ muscleGroup: "asc" }, { name: "asc" }],
+  });
+  const byName = new Map(catalog.map((exercise) => [exercise.name, exercise]));
+  const changed = EXERCISE_CATALOG.filter((exercise) => {
+    const existing = byName.get(exercise.name);
+    return !existing || existing.muscleGroup !== exercise.muscleGroup || existing.equipment !== exercise.equipment || existing.instructions !== exercise.instructions;
+  });
+
+  if (!changed.length) return catalog;
+
   await db.$transaction(
-    EXERCISE_CATALOG.map((exercise) =>
+    changed.map((exercise) =>
       db.exercise.upsert({
         where: { name: exercise.name },
         create: exercise,
@@ -52,6 +63,10 @@ export async function ensureExerciseCatalog() {
       }),
     ),
   );
+
+  return db.exercise.findMany({
+    orderBy: [{ muscleGroup: "asc" }, { name: "asc" }],
+  });
 }
 
 export const STARTER_TEMPLATE = {

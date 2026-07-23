@@ -3,13 +3,14 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getCurrentSession } from '@/lib/auth/session';
 import { db } from '@/lib/db';
+import { isSupportedTimeZone } from '@/lib/diary/date';
 import { hasTrustedOrigin } from '@/lib/security/request';
 
 export const runtime = 'nodejs';
-const schema = z.object({ timezone: z.string().trim().min(3).max(64), dayClosesAtMinutes: z.coerce.number().int().min(0).max(1439) }).refine((value) => {
-  try { new Intl.DateTimeFormat('pt-BR', { timeZone: value.timezone }).format(new Date()); return true; }
-  catch { return false; }
-}, { message: 'Fuso horario invalido.', path: ['timezone'] });
+const schema = z.object({
+  timezone: z.string().trim().min(3).max(64).refine(isSupportedTimeZone, 'Fuso horario invalido.'),
+  dayClosesAtMinutes: z.coerce.number().int().min(0).max(1439),
+});
 
 export async function PATCH(request: NextRequest) {
   if (!hasTrustedOrigin(request)) return NextResponse.json({ error: 'Solicitacao nao autorizada.' }, { status: 403 });

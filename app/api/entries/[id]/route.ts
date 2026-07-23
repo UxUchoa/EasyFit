@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getCurrentSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { logicalDateKey } from '@/lib/diary/date';
+import { diaryEntryResponse } from '@/lib/diary/response';
 import { hasTrustedOrigin } from "@/lib/security/request";
 
 export const runtime = "nodejs";
@@ -85,7 +86,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
     throw error;
   }
-  return NextResponse.json(result);
+  return NextResponse.json({
+    entry: diaryEntryResponse(result.entry, [result.revision]),
+  });
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext) {

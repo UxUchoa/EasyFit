@@ -76,7 +76,7 @@ export function BodyMeasurements({ measurements, defaultDate, defaultWeight }: {
     <p className='mt-2 max-w-2xl text-sm leading-6 text-[#657168]'>Registre valores com data e unidade. Eles são indicadores de acompanhamento, não diagnóstico.</p>
     <form key={editing?.id ?? 'new'} className='mt-5 grid gap-4' onSubmit={submit}>
       <div className='grid gap-4 sm:grid-cols-2'>
-        <div className='field'><label htmlFor='measurement-date'>Data</label><input id='measurement-date' name='measuredAt' type='date' defaultValue={editing?.measuredAt ?? defaultDate} required /></div>
+        <div className='field'><label htmlFor='measurement-date'>Data</label><input id='measurement-date' name='measuredAt' type='date' max={defaultDate} defaultValue={editing?.measuredAt ?? defaultDate} required /></div>
         <div className='field'><label htmlFor='measurement-weight'>Peso (kg)</label><input id='measurement-weight' name='weightKg' type='number' inputMode='decimal' min='30' max='350' step='0.01' defaultValue={editing?.weightKg ?? defaultWeight} required /></div>
       </div>
       <div className='grid grid-cols-2 gap-4 sm:grid-cols-5'>

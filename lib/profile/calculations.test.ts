@@ -20,6 +20,7 @@ const baseInput = {
 describe("profile estimates", () => {
   it("calculates age without rounding before the birthday", () => {
     expect(ageOnDate(baseInput.birthDate, baseInput.referenceDate)).toBe(29);
+    expect(ageOnDate(baseInput.birthDate, new Date("2026-08-10T00:00:00.000Z"))).toBe(30);
   });
 
   it("uses Mifflin-St Jeor for BMR", () => {

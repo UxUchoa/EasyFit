@@ -4,8 +4,12 @@ export function isRecentlyReauthenticated(
   session: { reauthenticatedAt: Date | null },
   now = new Date(),
 ) {
+  const elapsed = session.reauthenticatedAt
+    ? now.getTime() - session.reauthenticatedAt.getTime()
+    : null;
   return Boolean(
-    session.reauthenticatedAt &&
-      now.getTime() - session.reauthenticatedAt.getTime() <= REAUTHENTICATION_WINDOW_MS,
+    elapsed !== null &&
+      elapsed >= 0 &&
+      elapsed <= REAUTHENTICATION_WINDOW_MS,
   );
 }

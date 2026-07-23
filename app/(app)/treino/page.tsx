@@ -8,9 +8,8 @@ export const metadata: Metadata = { title: "Treino" };
 
 export default async function WorkoutPage() {
   const user = await requireUser();
-  await ensureExerciseCatalog();
   const [exercises, plans, activeSession, recentSessions] = await Promise.all([
-    db.exercise.findMany({ orderBy: [{ muscleGroup: "asc" }, { name: "asc" }] }),
+    ensureExerciseCatalog(),
     db.workoutPlan.findMany({
       where: { userId: user.id },
       orderBy: { updatedAt: "desc" },

@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { getCurrentSession } from "@/lib/auth/session";
 import { parseLogicalDate } from "@/lib/diary/date";
+import { diaryEntryResponse } from "@/lib/diary/response";
 import { ensureDayLog } from "@/lib/diary/service";
 import { db } from "@/lib/db";
 import { hasTrustedOrigin } from "@/lib/security/request";
@@ -42,6 +43,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const targetMeals = new Map(target.meals.map((meal) => [meal.slug, meal]));
   const copied = await db.$transaction(async (tx) => {
     let count = 0;
+    const entries: Array<{ mealSlug: string; entry: ReturnType<typeof diaryEntryResponse> }> = [];
     for (const sourceMeal of sourceMeals) {
       const targetSlug = parsed.data.sourceMealSlug && parsed.data.targetMealSlug ? parsed.data.targetMealSlug : sourceMeal.slug;
       let targetMeal = targetMeals.get(targetSlug);
@@ -51,12 +53,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
       if (!targetMeal) continue;
       if (sourceMeal.entries.length) {
-        await tx.mealEntry.createMany({ data: sourceMeal.entries.map((entry) => ({ mealId: targetMeal!.id, foodId: entry.foodId, copiedFromEntryId: entry.id, kind: entry.kind, quantity: entry.quantity, unit: entry.unit, snapshotName: entry.snapshotName, snapshotBrand: entry.snapshotBrand, snapshotSource: entry.snapshotSource, snapshotCalories: entry.snapshotCalories, snapshotProtein: entry.snapshotProtein, snapshotCarbohydrate: entry.snapshotCarbohydrate, snapshotFat: entry.snapshotFat, macrosComplete: entry.macrosComplete })) });
-        count += sourceMeal.entries.length;
+        const created = await tx.mealEntry.createManyAndReturn({ data: sourceMeal.entries.map((entry) => ({ mealId: targetMeal!.id, foodId: entry.foodId, copiedFromEntryId: entry.id, kind: entry.kind, quantity: entry.quantity, unit: entry.unit, snapshotName: entry.snapshotName, snapshotBrand: entry.snapshotBrand, snapshotSource: entry.snapshotSource, snapshotCalories: entry.snapshotCalories, snapshotProtein: entry.snapshotProtein, snapshotCarbohydrate: entry.snapshotCarbohydrate, snapshotFat: entry.snapshotFat, macrosComplete: entry.macrosComplete })) });
+        entries.push(...created.map((entry) => ({ mealSlug: targetSlug, entry: diaryEntryResponse(entry) })));
+        count += created.length;
       }
     }
     await tx.auditEvent.create({ data: { actorUserId: session.userId, action: parsed.data.sourceMealSlug ? "meal.copy" : "day.copy", objectType: "DayLog", objectId: target.id, result: "SUCCESS", correlationId: randomUUID(), context: { sourceDate: parsed.data.sourceDate, targetDate: date, copiedEntries: count } } });
-    return count;
+    return { count, entries };
   });
-  return NextResponse.json({ copiedEntries: copied });
+  return NextResponse.json({ copiedEntries: copied.count, entries: copied.entries });
 }

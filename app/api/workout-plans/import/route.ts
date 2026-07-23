@@ -24,8 +24,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const validated = validateWorkoutJsonUpload(parsed.data);
-    await ensureExerciseCatalog();
-    const catalog = await db.exercise.findMany({ select: { id: true, name: true } });
+    const catalog = await ensureExerciseCatalog() ?? await db.exercise.findMany({ select: { id: true, name: true } });
     const result = buildWorkoutImportProposal(validated.data, catalog);
     if (result.unresolved.length) {
       return NextResponse.json({

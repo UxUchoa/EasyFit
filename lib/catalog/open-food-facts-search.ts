@@ -51,7 +51,7 @@ export async function searchOpenFoodFacts(query: string) {
   const search = new URL("https://search.openfoodfacts.org/search");
   search.search = new URLSearchParams({
     q: query,
-    page_size: "12",
+    page_size: "6",
     langs: "pt,en",
   }).toString();
   return fetchOpenFoodFactsProducts(search);

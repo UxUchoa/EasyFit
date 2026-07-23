@@ -16,5 +16,6 @@ describe("recent reauthentication", () => {
         now,
       ),
     ).toBe(false);
+    expect(isRecentlyReauthenticated({ reauthenticatedAt: new Date(now.getTime() + 1) }, now)).toBe(false);
   });
 });

@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
+import { diaryEntryResponse } from "@/lib/diary/response";
 import { hasTrustedOrigin } from "@/lib/security/request";
 
 export const runtime = "nodejs";
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const existing = await db.mealEntry.findFirst({
     where: { originEntryId: planned.id, kind: "CONSUMED" },
   });
-  if (existing) return NextResponse.json({ entry: existing, replayed: true });
+  if (existing) return NextResponse.json({ entry: diaryEntryResponse(existing), replayed: true });
 
   try {
     const consumed = await db.$transaction(async (tx) => {
@@ -58,13 +59,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
       return created;
     });
-    return NextResponse.json({ entry: consumed }, { status: 201 });
+    return NextResponse.json({ entry: diaryEntryResponse(consumed) }, { status: 201 });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       const replayed = await db.mealEntry.findFirst({
         where: { originEntryId: planned.id, kind: "CONSUMED" },
       });
-      return NextResponse.json({ entry: replayed, replayed: true });
+      return NextResponse.json({ entry: replayed ? diaryEntryResponse(replayed) : null, replayed: true });
     }
     throw error;
   }
