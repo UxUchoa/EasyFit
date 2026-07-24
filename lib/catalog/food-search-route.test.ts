@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   choiceFindMany: vi.fn(),
   entryFindMany: vi.fn(),
   externalSearch: vi.fn(),
+  usdaSearch: vi.fn(),
+  portionUpsert: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/session", () => ({
@@ -17,10 +19,14 @@ vi.mock("@/lib/db", () => ({
     food: { findMany: mocks.foodFindMany, upsert: mocks.foodUpsert },
     foodSourceChoice: { findMany: mocks.choiceFindMany },
     mealEntry: { findMany: mocks.entryFindMany },
+    foodPortion: { upsert: mocks.portionUpsert },
   },
 }));
 vi.mock("@/lib/catalog/open-food-facts-search", () => ({
   searchOpenFoodFacts: mocks.externalSearch,
+}));
+vi.mock("@/lib/catalog/usda-food-data", () => ({
+  searchUsdaFoods: mocks.usdaSearch,
 }));
 
 import { GET as searchFoods } from "@/app/api/foods/search/route";
@@ -49,6 +55,8 @@ describe("food search route", () => {
     mocks.choiceFindMany.mockReset().mockResolvedValue([]);
     mocks.entryFindMany.mockReset().mockResolvedValue([]);
     mocks.externalSearch.mockReset().mockResolvedValue([]);
+    mocks.usdaSearch.mockReset().mockResolvedValue([]);
+    mocks.portionUpsert.mockReset().mockResolvedValue({ id: "portion-egg", foodId: "food-egg", name: "unidade", unit: "unidade", quantityInBaseUnit: 50 });
   });
 
   it("returns saved results without waiting for the external provider", async () => {
@@ -70,5 +78,17 @@ describe("food search route", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.externalSearch).toHaveBeenCalledWith("aveia");
+  });
+
+  it("finds a cached English egg from the Portuguese alias and restores its unit portion", async () => {
+    mocks.foodFindMany.mockResolvedValue([{ ...localFood, id: "food-egg", name: "Egg, whole, cooked", source: "USDA_FDC", calories: 155, portions: [] }]);
+
+    const response = await searchFoods(new NextRequest("http://localhost:3000/api/foods/search?q=ovo"));
+    const result = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(JSON.stringify(mocks.foodFindMany.mock.calls[0][0].where)).toContain('"contains":"egg"');
+    expect(mocks.portionUpsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ quantityInBaseUnit: 50 }) }));
+    expect(result.foods[0]).toMatchObject({ id: "food-egg", portions: [{ unit: "unidade", quantityInBaseUnit: "50" }] });
   });
 });

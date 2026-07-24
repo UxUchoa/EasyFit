@@ -44,7 +44,18 @@ export function normalizeFoodName(value: string) {
 }
 
 export function externalQueryForFood(value: string) {
-  return USDA_QUERY_PRESETS.get(normalizeFoodName(value)) ?? null;
+  const normalized = normalizeFoodName(value);
+  const exact = USDA_QUERY_PRESETS.get(normalized);
+  if (exact) return exact;
+  const partial = [...USDA_QUERY_PRESETS.entries()].find(([name]) => normalized.includes(name) || name.includes(normalized));
+  return partial?.[1] ?? null;
+}
+
+export function catalogSearchTermsForFood(value: string) {
+  const preset = externalQueryForFood(value);
+  const portugueseHead = value.trim().split(/\s+/).find((term) => term.length > 2) ?? null;
+  const englishHead = preset?.query.split(/\s+/).find((term) => term.length > 2) ?? null;
+  return [...new Set([value.trim(), portugueseHead, englishHead].filter((term): term is string => Boolean(term)))];
 }
 
 export function extractDeclaredCalories(value: string) {

@@ -5,24 +5,31 @@ import type { Prisma } from '@prisma/client';
 import { foodConflictGroups, foodConflictKey } from '@/lib/catalog/conflicts';
 import { searchOpenFoodFacts } from '@/lib/catalog/open-food-facts-search';
 import { searchUsdaFoods } from '@/lib/catalog/usda-food-data';
-import { externalQueryForFood, normalizeFoodName } from '@/lib/imports/food-resolver';
+import { catalogSearchTermsForFood, externalQueryForFood, foodNameSimilarity, normalizeFoodName } from '@/lib/imports/food-resolver';
+import { localizedFoodName } from '@/lib/catalog/food-localization';
 
 export const runtime = "nodejs";
 
 type SearchFood = Prisma.FoodGetPayload<{ include: { portions: true; favorites: { select: { userId: true } } } }>;
 
-async function withConflictMetadata(userId: string, foods: SearchFood[]) {
+async function withConflictMetadata(userId: string, foods: SearchFood[], portugueseSearchTerm = "") {
   const groups = foodConflictGroups(foods);
   const keys = [...groups.keys()];
   const choices = keys.length ? await db.foodSourceChoice.findMany({ where: { userId, conflictKey: { in: keys } }, select: { conflictKey: true, selectedFoodId: true } }) : [];
   const selectedByKey = new Map(choices.map((choice) => [choice.conflictKey, choice.selectedFoodId]));
-  return foods.map((food) => {
+  const localizedNames = foods.map((food) => localizedFoodName(food.name, food.source, "pt-BR", portugueseSearchTerm));
+  const nameCounts = localizedNames.reduce((counts, name) => counts.set(name, (counts.get(name) ?? 0) + 1), new Map<string, number>());
+  const namePositions = new Map<string, number>();
+  return foods.map((food, index) => {
     const key = foodConflictKey(food);
     const alternatives = groups.get(key);
+    const localizedName = localizedNames[index];
+    const position = (namePositions.get(localizedName) ?? 0) + 1;
+    namePositions.set(localizedName, position);
     return {
       id: food.id,
-      name: food.name,
-      brand: food.brand,
+      name: food.source === "USDA_FDC" && (nameCounts.get(localizedName) ?? 0) > 1 ? `${localizedName} · opção ${position}` : localizedName,
+      brand: food.source === "USDA_FDC" ? null : food.brand,
       baseQuantity: food.baseQuantity.toString(),
       baseUnit: food.baseUnit,
       calories: food.calories.toString(),
@@ -108,6 +115,24 @@ async function cacheUsdaProducts(userId: string, originalQuery: string, results:
   }));
 }
 
+async function ensureKnownPortions(query: string, foods: SearchFood[]) {
+  const preset = externalQueryForFood(query);
+  if (!preset?.portionGrams) return foods;
+  const portionGrams = preset.portionGrams;
+  const aliases = catalogSearchTermsForFood(query).map(normalizeFoodName);
+  return Promise.all(foods.map(async (food) => {
+    if (food.portions.some((portion) => normalizeFoodName(portion.unit) === "unidade")) return food;
+    const firstNameTerm = normalizeFoodName(food.name).split(" ")[0];
+    if (!aliases.includes(firstNameTerm)) return food;
+    const portion = await db.foodPortion.upsert({
+      where: { foodId_name: { foodId: food.id, name: "unidade" } },
+      create: { foodId: food.id, name: "unidade", unit: "unidade", quantityInBaseUnit: portionGrams },
+      update: { unit: "unidade", quantityInBaseUnit: portionGrams },
+    });
+    return { ...food, portions: [...food.portions, portion] };
+  }));
+}
+
 export async function GET(request: NextRequest) {
   const session = await getCurrentSession();
   if (!session) return NextResponse.json({ error: "Sessão expirada." }, { status: 401 });
@@ -130,6 +155,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ foods: await withConflictMetadata(session.userId, ordered) });
   }
 
+  const searchTerms = catalogSearchTermsForFood(query);
   const foods = await db.food.findMany({
     where: {
       AND: [
@@ -137,7 +163,7 @@ export async function GET(request: NextRequest) {
         { source: { not: "FATSECRET" } },
         { calories: { gte: 0, lte: 1_000 } },
         scope === "favorites" ? { favorites: { some: { userId: session.userId } } } : {},
-        query.length >= 2 ? { OR: [{ name: { contains: query, mode: "insensitive" } }, { brand: { contains: query, mode: "insensitive" } }] } : {},
+        query.length >= 2 ? { OR: searchTerms.flatMap((term) => [{ name: { contains: term, mode: "insensitive" as const } }, { brand: { contains: term, mode: "insensitive" as const } }]) } : {},
       ],
     },
     include: { portions: true, favorites: { where: { userId: session.userId }, select: { userId: true } } },
@@ -160,8 +186,11 @@ export async function GET(request: NextRequest) {
     externalSearchUnavailable = usda.status === "rejected" && openFoodFacts.status === "rejected";
   }
   const merged = new Map([...foods, ...externalFoods].map((food) => [food.id, food]));
+  const prepared = await ensureKnownPortions(query, [...merged.values()]);
+  const presetQuery = externalQueryForFood(query)?.query ?? query;
+  const ranked = prepared.sort((left, right) => Math.max(foodNameSimilarity(query, right.name), foodNameSimilarity(presetQuery, right.name)) - Math.max(foodNameSimilarity(query, left.name), foodNameSimilarity(presetQuery, left.name)));
   return NextResponse.json({
-    foods: await withConflictMetadata(session.userId, [...merged.values()].slice(0, 30)),
+    foods: await withConflictMetadata(session.userId, ranked.slice(0, 30), query),
     externalSearchUnavailable,
     canSearchExternal: !scope && !searchExternal && query.length >= 2,
   });

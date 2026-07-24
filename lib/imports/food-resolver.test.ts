@@ -22,7 +22,7 @@ vi.mock("@/lib/db", () => ({ db: { food: {
 vi.mock("@/lib/catalog/usda-food-data", () => ({ searchUsdaFoods: mocks.usdaSearch }));
 vi.mock("@/lib/catalog/open-food-facts-search", () => ({ searchOpenFoodFacts: mocks.offSearch }));
 
-import { externalQueryForFood, extractDeclaredCalories, foodNameSimilarity, normalizeFoodName, resolveImportFoodNames } from "./food-resolver";
+import { catalogSearchTermsForFood, externalQueryForFood, extractDeclaredCalories, foodNameSimilarity, normalizeFoodName, resolveImportFoodNames } from "./food-resolver";
 
 describe("diet import food resolver", () => {
   beforeEach(() => {
@@ -42,6 +42,8 @@ describe("diet import food resolver", () => {
   it("maps common Brazilian descriptions to generic USDA searches", () => {
     expect(externalQueryForFood("Peito de frango grelhado")?.query).toContain("chicken breast");
     expect(externalQueryForFood("Ovo")?.portionGrams).toBe(50);
+    expect(externalQueryForFood("Ovo cozido")?.portionGrams).toBe(50);
+    expect(catalogSearchTermsForFood("Ovo")).toEqual(["Ovo", "egg"]);
     expect(externalQueryForFood("Alimento desconhecido")).toBeNull();
   });
 

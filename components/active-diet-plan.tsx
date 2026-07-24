@@ -76,6 +76,7 @@ export function ActiveDietPlan({ planName, dayLabel, date, meals }: { planName: 
   const [reviewQuery, setReviewQuery] = useState("");
   const [reviewFoods, setReviewFoods] = useState<ReviewFood[]>([]);
   const [reviewPending, setReviewPending] = useState(false);
+  const [reviewSearchedExternal, setReviewSearchedExternal] = useState(false);
   const [reviewError, setReviewError] = useState("");
 
   useEffect(() => {
@@ -110,11 +111,17 @@ export function ActiveDietPlan({ planName, dayLabel, date, meals }: { planName: 
     setPendingMeal(null);
   }
 
-  async function searchReviewFoods(query: string) {
+  async function searchReviewFoods(query: string, includeExternal = false) {
     if (query.trim().length < 2) return;
     setReviewPending(true); setReviewError(""); setReviewFoods([]);
-    const response = await fetch(`/api/foods/search?q=${encodeURIComponent(query.trim())}&external=1`).catch(() => null);
-    const result = response ? await response.json().catch(() => ({})) as { foods?: ReviewFood[]; error?: string; externalSearchUnavailable?: boolean } : null;
+    let response = await fetch(`/api/foods/search?q=${encodeURIComponent(query.trim())}${includeExternal ? "&external=1" : ""}`).catch(() => null);
+    let result = response ? await response.json().catch(() => ({})) as { foods?: ReviewFood[]; error?: string; externalSearchUnavailable?: boolean } : null;
+    if (response?.ok && !includeExternal && !(result?.foods?.length)) {
+      response = await fetch(`/api/foods/search?q=${encodeURIComponent(query.trim())}&external=1`).catch(() => null);
+      result = response ? await response.json().catch(() => ({})) as typeof result : null;
+      includeExternal = true;
+    }
+    setReviewSearchedExternal(includeExternal);
     if (!response?.ok) setReviewError(result?.error ?? "Não foi possível pesquisar os alimentos.");
     else {
       setReviewFoods(result?.foods ?? []);
@@ -124,12 +131,12 @@ export function ActiveDietPlan({ planName, dayLabel, date, meals }: { planName: 
   }
 
   function openReview(item: PlannedItem) {
-    setAddingToMeal(null); setReviewing(item); setReviewQuery(item.name); setReviewFoods([]); setReviewError("");
+    setAddingToMeal(null); setReviewing(item); setReviewQuery(item.name); setReviewFoods([]); setReviewError(""); setReviewSearchedExternal(false);
     void searchReviewFoods(item.name);
   }
 
   function openAdd(meal: PlannedMeal) {
-    setReviewing(null); setAddingToMeal(meal); setReviewQuery(""); setReviewFoods([]); setReviewError(""); setNewQuantity("100"); setNewUnit("g");
+    setReviewing(null); setAddingToMeal(meal); setReviewQuery(""); setReviewFoods([]); setReviewError(""); setReviewSearchedExternal(false); setNewQuantity("100"); setNewUnit("g");
   }
 
   function closeReview() {
@@ -211,7 +218,7 @@ export function ActiveDietPlan({ planName, dayLabel, date, meals }: { planName: 
       <div><p className="eyebrow">Plano ativo · {dayLabel}</p><h2 id="active-diet-title" className="mt-2 text-2xl font-black">{planName}</h2><p className="mt-2 text-sm leading-6 text-[#657168]">{editMode ? "Ajuste os itens abaixo ou pesquise novos alimentos para esta dieta." : "Siga a prescrição do dia e registre cada refeição quando consumir."}</p></div>
       <div className="flex flex-wrap items-center justify-end gap-2"><button type="button" className="button-secondary !min-h-11 !px-4" onClick={() => setEditMode((current) => !current)}>{editMode ? "Concluir edição" : "Editar dieta"}</button><div className="rounded-2xl bg-[#153d28] px-4 py-3 text-right text-white"><strong className="text-xl">{format(totals.calories)} kcal</strong><p className="text-xs text-white/70">P {format(totals.protein, 1)} g · C {format(totals.carbs, 1)} g · G {format(totals.fat, 1)} g</p></div></div>
     </div>
-    {unresolved > 0 && <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#fffbed] p-3 text-sm font-bold text-[#725d00]"><p>{unresolved} item(ns) precisam de revisão. Escolha o alimento correto no catálogo ou nas APIs abertas.</p><button type="button" className="rounded-full border border-[#d8c56e] bg-white px-4 py-2 text-xs font-black" onClick={() => { const next = currentMeals.flatMap((meal) => meal.items).find((item) => item.calories === null); if (next) openReview(next); }}>Revisar próximo</button></div>}
+    {unresolved > 0 && <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#fffbed] p-3 text-sm font-bold text-[#725d00]"><p>{unresolved} item(ns) precisam de revisão. Escolha o alimento correto no catálogo ou nas APIs abertas.</p><button type="button" className="rounded-full border border-[#d8c56e] bg-white px-4 py-2 text-xs font-black" onClick={() => { const next = currentMeals.flatMap((meal) => meal.items).find((item) => item.calories === null); if (next) openReview(next); }}>Revisar próximo alimento</button></div>}
     <div className="mt-5 grid gap-4 lg:grid-cols-2">{currentMeals.map((meal) => {
       const mealCalories = meal.items.reduce((sum, item) => sum + (item.calories ?? 0), 0);
       const canConsume = Boolean(meal.slug && meal.items.some((item) => item.calories !== null));
@@ -219,7 +226,7 @@ export function ActiveDietPlan({ planName, dayLabel, date, meals }: { planName: 
       return <article key={meal.label} className="rounded-2xl border border-[#dfe5dc] p-4">
         <div className="flex items-start justify-between gap-3"><div><h3 className="font-black">{meal.label}</h3><p className="mt-1 text-sm text-[#657168]">{format(mealCalories)} kcal previstas</p></div>{completed && <span className="rounded-full bg-[#e9f5e9] px-2 py-1 text-[10px] font-black text-[#166534]">REGISTRADA</span>}</div>
         <ul className="mt-3 divide-y divide-[#edf0eb]">{meal.items.map((item) => <li key={item.sourcePointer} className="py-3 text-sm">
-          <div className="flex items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><strong>{item.name}</strong>{item.calories === null && <span className="rounded-full bg-[#fff0b8] px-2 py-1 text-[10px] font-black text-[#725d00]">REVISAR</span>}</div><p className="mt-1 text-xs text-[#657168]">{format(item.quantity, 2)} {item.unit}{item.source ? ` · ${sourceLabel(item.source)}` : ""}</p></div><div className="flex shrink-0 flex-col items-end gap-1"><span className="whitespace-nowrap font-bold">{item.calories === null ? "Sem cálculo" : `${format(item.calories)} kcal`}</span><button type="button" className={`rounded-full px-3 py-1.5 text-xs font-black ${item.calories === null ? "bg-[#fff0b8] text-[#725d00]" : "text-[#166534] underline"}`} onClick={() => openReview(item)}>{item.calories === null ? "Revisar" : "Trocar alimento"}</button></div></div>
+          <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><strong>{item.name}</strong>{item.calories === null && <span className="rounded-full bg-[#fff0b8] px-2 py-1 text-[10px] font-black text-[#725d00]">PRECISA DE REVISÃO</span>}</div><p className="mt-1 text-xs text-[#657168]">{format(item.quantity, 2)} {item.unit}{item.source ? ` · ${sourceLabel(item.source)}` : ""}</p></div><div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end"><span className="whitespace-nowrap text-right font-bold">{item.calories === null ? "Sem cálculo" : `${format(item.calories)} kcal`}</span><button type="button" aria-label={`${item.calories === null ? "Revisar e escolher alimento para" : "Trocar alimento"} ${item.name}`} className={`inline-flex min-h-10 items-center justify-center rounded-full border px-4 py-2 text-xs font-black shadow-sm ${item.calories === null ? "border-[#d8c56e] bg-[#fff8d9] text-[#725d00] hover:bg-[#fff0b8]" : "border-[#b9d4bd] bg-white text-[#166534] hover:bg-[#edf4eb]"}`} onClick={() => openReview(item)}><span aria-hidden="true">{item.calories === null ? "!" : "↔"}</span><span className="ml-2">{item.calories === null ? "Revisar e escolher" : "Trocar alimento"}</span></button></div></div>
           {item.calories !== null && <p className="mt-1 text-xs text-[#657168]">P {item.proteinGrams === null ? "—" : format(item.proteinGrams, 1)} g · C {item.carbohydrateGrams === null ? "—" : format(item.carbohydrateGrams, 1)} g · G {item.fatGrams === null ? "—" : format(item.fatGrams, 1)} g</p>}
           {editMode && <form className="mt-3 grid gap-3 rounded-2xl bg-[#f4f6f1] p-3 sm:grid-cols-[minmax(0,1fr)_7rem_7rem]" onSubmit={(event) => void updatePlanItem(event, item)}>
             <div className="field"><label htmlFor={`plan-name-${item.sourcePointer}`}>Nome no plano</label><input id={`plan-name-${item.sourcePointer}`} name="name" defaultValue={item.name} minLength={1} maxLength={180} required /></div>
@@ -241,7 +248,7 @@ export function ActiveDietPlan({ planName, dayLabel, date, meals }: { planName: 
           <div className="field"><label htmlFor="review-food-query">Nome do alimento</label><input id="review-food-query" value={reviewQuery} onChange={(event) => setReviewQuery(event.target.value)} minLength={2} required /></div>
           <button className="button-primary min-h-[3.25rem]" disabled={reviewPending}>{reviewPending ? "Buscando…" : "Pesquisar"}</button>
         </form>
-        <p className="mt-3 text-xs leading-5 text-[#657168]">Resultados do seu catálogo, USDA FoodData Central e Open Food Facts.</p>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="text-xs leading-5 text-[#657168]">{reviewSearchedExternal ? "Resultados do catálogo, USDA FoodData Central e Open Food Facts." : "Resultados encontrados primeiro no seu catálogo."}</p>{reviewFoods.length > 0 && !reviewSearchedExternal && <button type="button" className="rounded-full border border-[#dfe5dc] bg-white px-3 py-2 text-xs font-black text-[#166534]" disabled={reviewPending} onClick={() => void searchReviewFoods(reviewQuery, true)}>Buscar também nas bases abertas</button>}</div>
         {reviewError && <p role="alert" className="mt-4 rounded-xl bg-[#fff1ef] p-3 text-sm font-bold text-[#b42318]">{reviewError}</p>}
         {reviewPending && reviewFoods.length === 0 && <div className="mt-4 grid gap-3" aria-label="Buscando alternativas"><div className="h-28 animate-pulse rounded-2xl bg-[#e9eee7]" /><div className="h-28 animate-pulse rounded-2xl bg-[#e9eee7]" /></div>}
         <div className="mt-4 grid gap-3">{reviewFoods.map((food) => {
