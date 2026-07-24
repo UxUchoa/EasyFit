@@ -23,7 +23,7 @@ export default async function ImportsPage() {
     <p className='eyebrow'>Importação de dieta</p>
     <h1 className='display mt-2 text-4xl font-bold'>Receba, revise, só então ative.</h1>
     <p className='mt-3 max-w-2xl leading-7 text-[#657168]'>O piloto aceita JSON estruturado de até 2 MB. Nenhuma porção ausente é inventada e nenhum plano entra em uso sem sua confirmação.</p>
-    <ContextualHelp href='/dieta' linkLabel='Voltar ao diário alimentar'>Use um arquivo JSON com dias, refeições e itens. Se houver quantidade ausente ou correspondência incerta, revise o item nesta tela antes de confirmar; cancelar não altera seu diário atual.</ContextualHelp>
+    <ContextualHelp href='/dieta' linkLabel='Voltar à dieta'>Use um arquivo JSON com dias, refeições e itens. Se houver quantidade ausente ou correspondência incerta, revise o item nesta tela antes de confirmar; cancelar não altera seu plano ativo.</ContextualHelp>
     <ImportManager jobs={jobs.map((job) => ({
       id: job.id,
       status: job.status,

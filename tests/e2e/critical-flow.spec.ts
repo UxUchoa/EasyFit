@@ -63,7 +63,7 @@ test('cadastro, onboarding e adição rápida preservam o fluxo principal', asyn
   await page.reload();
   await expect.poll(() => db.auditEvent.count({ where: { actorUserId: e2eUser.id, action: 'session.rotate', objectId: e2eSession.id } })).toBe(1);
   await expect(page.getByRole('heading', { name: 'Olá, Pessoa.' })).toBeVisible();
-  await page.goto('/dieta');
+  await page.goto('/registro');
   await page.getByTestId('diary-action-quick').click();
   await page.getByLabel('Descrição').fill('Lanche automatizado');
   await page.getByLabel('Calorias (kcal)').fill('245');
@@ -117,7 +117,7 @@ test('cadastro, onboarding e adição rápida preservam o fluxo principal', asyn
   await foodSearchForm.getByLabel('Pesquisar por nome ou marca').fill(conflictName);
   await foodSearchForm.getByRole('button', { name: 'Pesquisar', exact: true }).click();
   await expect(page.getByRole('article').filter({ hasText: conflictName }).filter({ hasText: 'Fonte: TACO' })).toContainText('Esta foi sua última escolha');
-  await page.getByRole('button', { name: 'Fechar e voltar para a dieta' }).click();
+  await page.getByRole('button', { name: 'Fechar e voltar para o registro' }).click();
 
   let dialogOpened = false;
   page.on('dialog', async (dialog) => { dialogOpened = true; await dialog.dismiss(); });
@@ -131,7 +131,7 @@ test('cadastro, onboarding e adição rápida preservam o fluxo principal', asyn
   await expectNoSeriousAccessibilityViolations(page);
 
   const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-  await page.goto('/dieta?date=' + yesterday);
+  await page.goto('/registro?date=' + yesterday);
   await page.getByTestId('diary-action-quick').click();
   await page.getByLabel('Descrição').fill('Registro retroativo');
   await page.getByLabel('Calorias (kcal)').fill('100');
@@ -146,7 +146,7 @@ test('cadastro, onboarding e adição rápida preservam o fluxo principal', asyn
   await expect(retroactiveEntry).toContainText('Quantidade anotada incorretamente');
 
   await page.goto('/importacoes');
-  await expect(page.getByRole('complementary', { name: 'Ajuda contextual' }).getByRole('link', { name: 'Voltar ao diário alimentar' })).toBeVisible();
+  await expect(page.getByRole('complementary', { name: 'Ajuda contextual' }).getByRole('link', { name: 'Voltar à dieta' })).toBeVisible();
   const importedFoodName = `Banana automatizada ${Date.now()}`;
   const importedFood = await db.food.create({ data: { name: importedFoodName, source: 'TEST_IMPORT', baseQuantity: 100, baseUnit: 'g', calories: 100, proteinGrams: 2, carbohydrateGrams: 20, fatGrams: 1 } });
   const importContent = JSON.stringify({ name: 'Plano alimentar E2E', days: [{ label: 'Segunda-feira', meals: [{ name: 'Almoço', items: [{ food: importedFoodName, quantity: 150, unit: 'g' }, { food: 'Uma fruta' }] }] }] });
@@ -172,6 +172,7 @@ test('cadastro, onboarding e adição rápida preservam o fluxo principal', asyn
   await expect(activeDiet).toContainText('150 kcal previstas');
   await activeDiet.getByRole('button', { name: 'Comi esta refeição' }).click();
   await expect(activeDiet.getByRole('button', { name: 'Refeição registrada' })).toBeDisabled();
+  await page.goto('/registro?date=2026-07-27');
   await expect(page.getByRole('listitem').filter({ hasText: importedFoodName }).filter({ hasText: 'REALIZADO' })).toContainText('150 kcal');
   expect(await db.mealEntry.count({ where: { foodId: importedFood.id, meal: { dayLog: { userId: e2eUser.id, logicalDate: new Date('2026-07-27T00:00:00.000Z') } } } })).toBe(1);
 

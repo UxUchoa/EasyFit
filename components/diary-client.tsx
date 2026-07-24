@@ -199,7 +199,7 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
 
   function closePanel() {
     setPanel(null);
-    if (initialBarcode || initialScanner) window.history.replaceState(null, "", `/dieta?date=${date}`);
+    if (initialBarcode || initialScanner) window.history.replaceState(null, "", `/registro?date=${date}`);
   }
 
   async function postEntry(payload: Record<string, unknown>, label = 'Novo registro alimentar') {
@@ -538,11 +538,11 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
   return (
     <>
       <div className="mt-6 flex items-center justify-between gap-3">
-        <Link className="button-secondary !min-h-11 !px-4" href={`/dieta?date=${shiftedDate(date, -1)}`} aria-label="Dia anterior">←</Link>
+        <Link className="button-secondary !min-h-11 !px-4" href={`/registro?date=${shiftedDate(date, -1)}`} aria-label="Dia anterior">←</Link>
         <time dateTime={date} className="rounded-full border border-[#dfe5dc] bg-white px-4 py-2 text-sm font-black">
           {new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`))}
         </time>
-        <Link className="button-secondary !min-h-11 !px-4" href={`/dieta?date=${shiftedDate(date, 1)}`} aria-label="Próximo dia">→</Link>
+        <Link className="button-secondary !min-h-11 !px-4" href={`/registro?date=${shiftedDate(date, 1)}`} aria-label="Próximo dia">→</Link>
       </div>
 
       <section aria-label="Resumo nutricional" className="mt-5 rounded-[1.75rem] bg-[#153d28] p-6 text-white">
@@ -586,8 +586,8 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
         <dialog ref={dialogRef} className="app-dialog m-auto max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-4xl overflow-y-auto rounded-[1.75rem] border border-[#dfe5dc] bg-[#f8faf6] p-0 text-[#17201b] shadow-2xl backdrop:bg-[#07120c]/70" aria-labelledby="entry-panel-title" onClose={closePanel} onCancel={() => setPanel(null)} onClick={(event) => { if (event.target === event.currentTarget) setPanel(null); }}>
         <div className="p-4 sm:p-7" data-draft-key={activeDraftKey ?? undefined} onInput={saveDraft}>
           <div className="flex items-start justify-between gap-4">
-            <div><p className="eyebrow">Adicionar à dieta</p><h2 id="entry-panel-title" className="mt-2 text-xl font-black">{panel === "quick" ? "Adição rápida" : panel === "search" ? "Buscar alimento" : panel === "private" ? "Cadastrar pelo rótulo" : panel === "barcode" ? "Ler código de barras" : "Refeição personalizada"}</h2>{panel === "barcode" && <p className="mt-2 text-sm text-[#657168]">Leitura local e consulta gratuita no Open Food Facts.</p>}</div>
-            <button type="button" className="grid size-11 shrink-0 place-items-center rounded-full border border-[#dfe5dc] bg-white text-xl" onClick={closePanel} aria-label="Fechar e voltar para a dieta">×</button>
+            <div><p className="eyebrow">Adicionar ao registro</p><h2 id="entry-panel-title" className="mt-2 text-xl font-black">{panel === "quick" ? "Adição rápida" : panel === "search" ? "Buscar alimento" : panel === "private" ? "Cadastrar pelo rótulo" : panel === "barcode" ? "Ler código de barras" : "Refeição personalizada"}</h2>{panel === "barcode" && <p className="mt-2 text-sm text-[#657168]">Leitura local e consulta gratuita no Open Food Facts.</p>}</div>
+            <button type="button" className="grid size-11 shrink-0 place-items-center rounded-full border border-[#dfe5dc] bg-white text-xl" onClick={closePanel} aria-label="Fechar e voltar para o registro">×</button>
           </div>
           {panel !== "private" && panel !== "meal" && panel !== "barcode" && <div className="field mt-5"><label htmlFor="mealSlug">Refeição</label><select id="mealSlug" value={mealSlug} onChange={(event) => setMealSlug(event.target.value)}>{meals.map((meal) => <option key={meal.slug} value={meal.slug}>{meal.label}</option>)}</select></div>}
           {panel !== "private" && panel !== "meal" && panel !== "barcode" && <div className="field mt-4"><label htmlFor="entryKind">Tipo de registro</label><select id="entryKind" value={entryKind} onChange={(event) => setEntryKind(event.target.value as "PLANNED" | "CONSUMED")}><option value="CONSUMED">Já consumi</option><option value="PLANNED">Estou planejando</option></select></div>}
@@ -601,10 +601,10 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
                 : meal));
               setPanel(null);
               showNotice("Produto adicionado ao diário.");
-              window.history.replaceState(null, "", `/dieta?date=${date}`);
+              window.history.replaceState(null, "", `/registro?date=${date}`);
             }}
             onManualSearch={() => openPanel("search")}
-            onManualRegister={(barcode) => router.replace(`/dieta?date=${date}&barcode=${encodeURIComponent(barcode)}`)}
+            onManualRegister={(barcode) => router.replace(`/registro?date=${date}&barcode=${encodeURIComponent(barcode)}`)}
           />}
 
           {panel === "quick" && (

@@ -1,51 +1,28 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ActiveDietPlan } from "@/components/active-diet-plan";
-import { DiaryClient } from "@/components/diary-client";
 import { requireUser } from "@/lib/auth/session";
-import { STANDARD_MEALS, mealLabel } from "@/lib/diary/constants";
 import { logicalDateKey, parseLogicalDate } from "@/lib/diary/date";
-import { findDiaryDay } from "@/lib/diary/service";
 import { db } from "@/lib/db";
 import { dietPlanSnapshotSchema, groupDietItemsByMeal, itemsForDietDate } from "@/lib/imports/snapshot";
 
 export const metadata: Metadata = { title: "Dieta" };
 
-export default async function DietPage({ searchParams }: { searchParams: Promise<{ date?: string; barcode?: string; scanner?: string }> }) {
+function shiftedDate(date: string, days: number) {
+  const value = new Date(`${date}T12:00:00.000Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+export default async function DietPage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
   const user = await requireUser();
   const params = await searchParams;
   const today = logicalDateKey(new Date(), user.profile?.timezone ?? "America/Sao_Paulo", user.profile?.dayClosesAtMinutes ?? 0);
   const date = params.date && parseLogicalDate(params.date) ? params.date : today;
-  const selectedDate = parseLogicalDate(date)!;
-  const [day, activePlan] = await Promise.all([
-    findDiaryDay(user.id, selectedDate),
-    db.dietPlan.findFirst({ where: { userId: user.id, active: true }, include: { versions: { orderBy: { version: "desc" }, take: 1 } } }),
-  ]);
-  const meals = day
-    ? day.meals.map((meal) => ({
-        id: meal.id,
-        slug: meal.slug,
-        label: mealLabel(meal.slug, meal.customName),
-        custom: meal.kind === "CUSTOM",
-        entries: meal.entries.map((entry) => ({
-          id: entry.id,
-          updatedAt: entry.updatedAt.toISOString(),
-          kind: entry.kind,
-          name: entry.snapshotName,
-          brand: entry.snapshotBrand,
-          quantity: Number(entry.quantity),
-          unit: entry.unit,
-          calories: Number(entry.snapshotCalories),
-          proteinGrams: entry.snapshotProtein === null ? null : Number(entry.snapshotProtein),
-          carbohydrateGrams:
-            entry.snapshotCarbohydrate === null ? null : Number(entry.snapshotCarbohydrate),
-          fatGrams: entry.snapshotFat === null ? null : Number(entry.snapshotFat),
-          macrosComplete: entry.macrosComplete,
-          revisions: entry.revisions.map((revision) => ({ id: revision.id, previousQuantity: Number(revision.previousQuantity), nextQuantity: Number(revision.nextQuantity), reason: revision.reason, correctedAt: revision.correctedAt.toISOString() })),
-        })),
-      }))
-    : STANDARD_MEALS.map((meal) => ({ id: null, slug: meal.slug, label: meal.label, custom: false, entries: [] }));
-
+  const activePlan = await db.dietPlan.findFirst({
+    where: { userId: user.id, active: true },
+    select: { name: true, versions: { orderBy: { version: "desc" }, take: 1, select: { snapshot: true } } },
+  });
   const version = activePlan?.versions[0];
   const parsedSnapshot = version ? dietPlanSnapshotSchema.safeParse(version.snapshot) : null;
   const plannedItems = parsedSnapshot?.success ? itemsForDietDate(parsedSnapshot.data, date) : [];
@@ -53,6 +30,7 @@ export default async function DietPage({ searchParams }: { searchParams: Promise
     label: meal.label,
     slug: meal.slug,
     items: meal.items.map((item) => ({
+      sourcePointer: item.sourcePointer,
       name: item.name,
       quantity: item.quantity,
       unit: item.unit,
@@ -64,5 +42,36 @@ export default async function DietPage({ searchParams }: { searchParams: Promise
     })),
   }));
 
-  return <main className='shell py-8'><p className='eyebrow'>Dieta</p><h1 className='display mt-2 text-4xl font-bold'>Seu diário alimentar.</h1><div className='mt-3 flex flex-wrap items-center justify-between gap-4'><p className='max-w-xl leading-7 text-[#657168]'>Registre o realizado e mantenha o histórico fiel ao que aconteceu naquele dia.</p><Link className='button-secondary' href='/importacoes'>Importar dieta em JSON</Link></div>{activePlan && plannedMeals.length > 0 && <ActiveDietPlan planName={activePlan.name} dayLabel={plannedItems[0].day} date={date} meals={plannedMeals} />}<DiaryClient key={date} date={date} today={today} userScope={user.id} meals={meals} initialBarcode={params.barcode?.slice(0, 14)} initialScanner={params.scanner === "1"} /></main>;
+  return (
+    <main className="shell py-8">
+      <p className="eyebrow">Plano alimentar</p>
+      <h1 className="display mt-2 text-4xl font-bold">Siga sua dieta do dia.</h1>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
+        <p className="max-w-xl leading-7 text-[#657168]">Aqui ficam somente as refeições prescritas, os nutrientes estimados e os itens que precisam de revisão.</p>
+        <div className="flex flex-wrap gap-2">
+          <Link className="button-secondary" href="/importacoes">Importar JSON</Link>
+          <Link className="button-secondary" href={`/registro?date=${date}`}>Abrir registro</Link>
+        </div>
+      </div>
+
+      <nav aria-label="Escolher dia da dieta" className="mt-6 flex items-center justify-between gap-3">
+        <Link className="button-secondary !min-h-11 !px-4" href={`/dieta?date=${shiftedDate(date, -1)}`} aria-label="Dia anterior">←</Link>
+        <time dateTime={date} className="rounded-full border border-[#dfe5dc] bg-white px-4 py-2 text-center text-sm font-black">
+          {new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`))}
+        </time>
+        <Link className="button-secondary !min-h-11 !px-4" href={`/dieta?date=${shiftedDate(date, 1)}`} aria-label="Próximo dia">→</Link>
+      </nav>
+
+      {activePlan && plannedMeals.length > 0 ? (
+        <ActiveDietPlan key={date} planName={activePlan.name} dayLabel={plannedItems[0].day} date={date} meals={plannedMeals} />
+      ) : (
+        <section className="card mt-6 p-7 text-center sm:p-10">
+          <p className="eyebrow">Sem refeições para este dia</p>
+          <h2 className="mt-2 text-2xl font-black">{activePlan ? "O plano ativo não prescreve refeições nesta data." : "Você ainda não possui uma dieta ativa."}</h2>
+          <p className="mx-auto mt-3 max-w-xl leading-7 text-[#657168]">Importe um plano em JSON ou navegue para outro dia da semana.</p>
+          <Link className="button-primary mt-5" href="/importacoes">Importar dieta</Link>
+        </section>
+      )}
+    </main>
+  );
 }

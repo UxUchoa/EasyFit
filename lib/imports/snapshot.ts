@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { calculateEntryNutrition, type FoodForCalculation } from "@/lib/diary/nutrition";
 import { normalizeFoodName } from "./food-resolver";
 
 const nutritionSchema = z.object({
@@ -58,4 +59,45 @@ export function groupDietItemsByMeal(items: DietPlanSnapshotItem[]) {
   const groups = new Map<string, DietPlanSnapshotItem[]>();
   for (const item of items) groups.set(item.meal, [...(groups.get(item.meal) ?? []), item]);
   return [...groups].map(([label, mealItems]) => ({ label, slug: mealSlugFromImportedLabel(label), items: mealItems }));
+}
+
+export function replaceDietPlanSnapshotFood(
+  snapshot: DietPlanSnapshot,
+  sourcePointer: string,
+  food: FoodForCalculation & { id: string; name: string; source: string },
+) {
+  const target = snapshot.items.find((item) => item.sourcePointer === sourcePointer);
+  if (!target) return null;
+  const nutrition = calculateEntryNutrition(food, target.quantity, target.unit);
+  if (!nutrition) return null;
+  return {
+    ...snapshot,
+    items: snapshot.items.map((item) => item.sourcePointer === sourcePointer ? {
+      ...item,
+      catalog: { foodId: food.id, name: food.name, source: food.source, confidence: 1 },
+      nutrition,
+    } : item),
+  } satisfies DietPlanSnapshot;
+}
+
+export function updateDietPlanSnapshotItem(
+  snapshot: DietPlanSnapshot,
+  sourcePointer: string,
+  changes: Partial<Pick<DietPlanSnapshotItem, "name" | "quantity" | "unit" | "nutrition">>,
+) {
+  if (!snapshot.items.some((item) => item.sourcePointer === sourcePointer)) return null;
+  return {
+    ...snapshot,
+    items: snapshot.items.map((item) => item.sourcePointer === sourcePointer ? { ...item, ...changes } : item),
+  } satisfies DietPlanSnapshot;
+}
+
+export function removeDietPlanSnapshotItem(snapshot: DietPlanSnapshot, sourcePointer: string) {
+  if (!snapshot.items.some((item) => item.sourcePointer === sourcePointer)) return null;
+  return { ...snapshot, items: snapshot.items.filter((item) => item.sourcePointer !== sourcePointer) } satisfies DietPlanSnapshot;
+}
+
+export function appendDietPlanSnapshotItem(snapshot: DietPlanSnapshot, item: DietPlanSnapshotItem) {
+  if (snapshot.items.some((candidate) => candidate.sourcePointer === item.sourcePointer)) return null;
+  return { ...snapshot, items: [...snapshot.items, item] } satisfies DietPlanSnapshot;
 }

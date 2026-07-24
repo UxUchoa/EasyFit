@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import type { Prisma } from '@prisma/client';
 import { foodConflictGroups, foodConflictKey } from '@/lib/catalog/conflicts';
 import { searchOpenFoodFacts } from '@/lib/catalog/open-food-facts-search';
+import { searchUsdaFoods } from '@/lib/catalog/usda-food-data';
+import { externalQueryForFood, normalizeFoodName } from '@/lib/imports/food-resolver';
 
 export const runtime = "nodejs";
 
@@ -76,6 +78,36 @@ async function cacheOpenFoodFactsProducts(userId: string, results: Awaited<Retur
   }));
 }
 
+async function cacheUsdaProducts(userId: string, originalQuery: string, results: Awaited<ReturnType<typeof searchUsdaFoods>>) {
+  const preset = externalQueryForFood(originalQuery);
+  return Promise.all(results.map(async (result) => {
+    const nutrition = {
+      name: result.description.slice(0, 180),
+      brand: "USDA FoodData Central",
+      source: "USDA_FDC",
+      sourceReference: result.sourceReference,
+      sourceFetchedAt: new Date(),
+      sourceExpiresAt: null,
+      baseQuantity: result.baseQuantity,
+      baseUnit: result.baseUnit,
+      calories: result.calories,
+      proteinGrams: result.proteinGrams,
+      carbohydrateGrams: result.carbohydrateGrams,
+      fatGrams: result.fatGrams,
+      fiberGrams: result.fiberGrams,
+    };
+    const existing = await db.food.findFirst({ where: { source: "USDA_FDC", sourceReference: result.sourceReference }, select: { id: true } });
+    let food = existing
+      ? await db.food.update({ where: { id: existing.id }, data: nutrition, include: { portions: true, favorites: { where: { userId }, select: { userId: true } } } })
+      : await db.food.create({ data: nutrition, include: { portions: true, favorites: { where: { userId }, select: { userId: true } } } });
+    if (preset?.portionGrams && !food.portions.some((portion) => normalizeFoodName(portion.unit) === "unidade")) {
+      await db.foodPortion.upsert({ where: { foodId_name: { foodId: food.id, name: "unidade" } }, create: { foodId: food.id, name: "unidade", unit: "unidade", quantityInBaseUnit: preset.portionGrams }, update: { unit: "unidade", quantityInBaseUnit: preset.portionGrams } });
+      food = await db.food.findUniqueOrThrow({ where: { id: food.id }, include: { portions: true, favorites: { where: { userId }, select: { userId: true } } } });
+    }
+    return food;
+  }));
+}
+
 export async function GET(request: NextRequest) {
   const session = await getCurrentSession();
   if (!session) return NextResponse.json({ error: "Sessão expirada." }, { status: 401 });
@@ -115,12 +147,17 @@ export async function GET(request: NextRequest) {
   let externalSearchUnavailable = false;
   let externalFoods: SearchFood[] = [];
   if (!scope && searchExternal && query.length >= 2) {
-    try {
-      const results = await searchOpenFoodFacts(query);
-      externalFoods = await cacheOpenFoodFactsProducts(session.userId, results);
-    } catch {
-      externalSearchUnavailable = true;
-    }
+    const preset = externalQueryForFood(query);
+    const [usda, openFoodFacts] = await Promise.allSettled([
+      searchUsdaFoods(preset?.query ?? query),
+      searchOpenFoodFacts(query),
+    ]);
+    const cached = await Promise.all([
+      usda.status === "fulfilled" ? cacheUsdaProducts(session.userId, query, usda.value) : Promise.resolve([]),
+      openFoodFacts.status === "fulfilled" ? cacheOpenFoodFactsProducts(session.userId, openFoodFacts.value) : Promise.resolve([]),
+    ]);
+    externalFoods = cached.flat();
+    externalSearchUnavailable = usda.status === "rejected" && openFoodFacts.status === "rejected";
   }
   const merged = new Map([...foods, ...externalFoods].map((food) => [food.id, food]));
   return NextResponse.json({

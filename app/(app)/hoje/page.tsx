@@ -80,7 +80,7 @@ export default async function TodayPage() {
       </section>
 
       <section aria-labelledby="meals-title" className="mt-10">
-        <div className="flex items-center justify-between gap-4"><div><p className="eyebrow">Diário alimentar</p><h2 id="meals-title" className="mt-2 text-2xl font-black">Refeições</h2></div><Link href="/dieta" className="text-sm font-black text-[#166534] underline-offset-4 hover:underline">Ver diário</Link></div>
+        <div className="flex items-center justify-between gap-4"><div><p className="eyebrow">Diário alimentar</p><h2 id="meals-title" className="mt-2 text-2xl font-black">Refeições</h2></div><Link href="/registro" className="text-sm font-black text-[#166534] underline-offset-4 hover:underline">Ver registro</Link></div>
         <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {meals.map((meal) => {
             const label = mealLabel(meal.slug, meal.customName);
@@ -91,7 +91,7 @@ export default async function TodayPage() {
             return (
             <article key={meal.slug} className="group flex min-h-28 items-center justify-between rounded-2xl border border-[#dfe5dc] bg-white p-5">
               <div><h3 className='font-black'>{label}</h3><p className='mt-1 text-sm text-[#748078]'>{consumedEntries.length ? `${consumedEntries.length} ${consumedEntries.length === 1 ? 'item realizado' : 'itens realizados'} · ${Math.round(calories)} kcal` : 'Nada realizado'}</p><p className='mt-1 text-xs font-bold text-[#8a6c00]'>{plannedEntries.length ? `${plannedEntries.length} planejado(s) · ${Math.round(plannedCalories)} kcal` : 'Nada planejado'}</p></div>
-              <Link href={`/dieta?date=${date}`} className="grid size-11 place-items-center rounded-full bg-[#edf4eb] text-xl font-black text-[#166534] no-underline group-hover:bg-[#d8f24a]" aria-label={`Adicionar alimento em ${label}`}>+</Link>
+              <Link href={`/registro?date=${date}`} className="grid size-11 place-items-center rounded-full bg-[#edf4eb] text-xl font-black text-[#166534] no-underline group-hover:bg-[#d8f24a]" aria-label={`Adicionar alimento em ${label}`}>+</Link>
             </article>
           )})}
         </div>
