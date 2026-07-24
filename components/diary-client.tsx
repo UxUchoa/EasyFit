@@ -71,12 +71,12 @@ function DiaryActionIcon({ name }: { name: DiaryActionIconName }) {
   return <svg {...common}><path d="M12 5v14M5 12h14" /></svg>;
 }
 
-export function DiaryClient({ date, today, userScope, meals: initialMeals, initialBarcode = "", initialScanner = false }: { date: string; today: string; userScope: string; meals: DiaryMeal[]; initialBarcode?: string; initialScanner?: boolean }) {
+export function DiaryClient({ date, today, userScope, meals: initialMeals, initialBarcode = "", initialScanner = false, initialMealSlug = "" }: { date: string; today: string; userScope: string; meals: DiaryMeal[]; initialBarcode?: string; initialScanner?: boolean; initialMealSlug?: string }) {
   const router = useRouter();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [meals, setMeals] = useState(initialMeals);
   const [panel, setPanel] = useState<"quick" | "search" | "private" | "meal" | "barcode" | null>(initialBarcode ? "private" : initialScanner ? "barcode" : null);
-  const [mealSlug, setMealSlug] = useState(meals[0]?.slug ?? "cafe-da-manha");
+  const [mealSlug, setMealSlug] = useState(meals.some((meal) => meal.slug === initialMealSlug) ? initialMealSlug : meals[0]?.slug ?? "cafe-da-manha");
   const [entryKind, setEntryKind] = useState<"PLANNED" | "CONSUMED">("CONSUMED");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -595,6 +595,7 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
           {panel === "barcode" && <BarcodeScanner
             date={date}
             meals={meals.map((meal) => ({ slug: meal.slug, label: meal.label }))}
+            initialMealSlug={mealSlug}
             onAdded={(slug, entry) => {
               setMeals((items) => items.map((meal) => meal.slug === slug
                 ? { ...meal, entries: meal.entries.some((candidate) => candidate.id === entry.id) ? meal.entries : [...meal.entries, entry] }
@@ -604,15 +605,15 @@ export function DiaryClient({ date, today, userScope, meals: initialMeals, initi
               window.history.replaceState(null, "", `/registro?date=${date}`);
             }}
             onManualSearch={() => openPanel("search")}
-            onManualRegister={(barcode) => router.replace(`/registro?date=${date}&barcode=${encodeURIComponent(barcode)}`)}
+            onManualRegister={(barcode) => router.replace(`/registro?date=${date}&meal=${encodeURIComponent(mealSlug)}&barcode=${encodeURIComponent(barcode)}`)}
           />}
 
           {panel === "quick" && (
             <div className="mt-5" aria-busy={pending}>
               <div className="rounded-2xl border border-[#dfe5dc] bg-[#f4f6f1] p-4">
                 <h3 className="font-black">O que você deseja adicionar?</h3>
-                <p className="mt-1 text-sm leading-6 text-[#657168]">Use a adição rápida quando você já souber as calorias. Para escolher um produto e preencher os nutrientes automaticamente, pesquise no catálogo.</p>
-                <button type="button" className="button-secondary mt-3 w-full min-h-12" onClick={() => openPanel("search")}>Pesquisar alimento no catálogo</button>
+                <p className="mt-1 text-sm leading-6 text-[#657168]">Digite as calorias, pesquise pelo nome ou leia o código de barras. O resultado será adicionado à refeição selecionada.</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2"><button type="button" className="button-secondary min-h-12 w-full" onClick={() => openPanel("search")}>Pesquisar no catálogo</button><button type="button" className="button-secondary min-h-12 w-full" onClick={() => openPanel("barcode")}><span aria-hidden="true">▥</span><span className="ml-2">Usar código de barras</span></button></div>
               </div>
           
               <form noValidate onSubmit={submitQuick} className="mt-5 grid gap-4">

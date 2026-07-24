@@ -64,6 +64,13 @@ test('cadastro, onboarding e adição rápida preservam o fluxo principal', asyn
   await expect.poll(() => db.auditEvent.count({ where: { actorUserId: e2eUser.id, action: 'session.rotate', objectId: e2eSession.id } })).toBe(1);
   await expect(page.getByRole('heading', { name: 'Olá, Pessoa.' })).toBeVisible();
   await page.goto('/registro');
+  const morningSnack = page.getByRole('article').filter({ hasText: 'Lanche da manhã' });
+  await morningSnack.getByRole('button', { name: 'Adicionar em Lanche da manhã' }).click();
+  await expect(page.getByLabel('Refeição')).toHaveValue('lanche-da-manha');
+  await expect(page.getByRole('button', { name: 'Usar código de barras' })).toBeVisible();
+  await page.getByRole('button', { name: 'Usar código de barras' }).click();
+  await expect(page.getByRole('heading', { name: 'Ler código de barras' })).toBeVisible();
+  await page.getByRole('button', { name: 'Fechar e voltar para o registro' }).click();
   await page.getByTestId('diary-action-quick').click();
   await page.getByLabel('Descrição').fill('Lanche automatizado');
   await page.getByLabel('Calorias (kcal)').fill('245');
