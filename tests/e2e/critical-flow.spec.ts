@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { db } from '@/lib/db';
+import { logicalDateKey, shiftLogicalDate } from '@/lib/diary/date';
 
 async function expectNoSeriousAccessibilityViolations(page: Page) {
   await page.addScriptTag({ path: path.join(process.cwd(), 'node_modules', 'axe-core', 'axe.min.js') });
@@ -10,6 +11,28 @@ async function expectNoSeriousAccessibilityViolations(page: Page) {
     return result.violations.filter((violation) => violation.impact === 'critical' || violation.impact === 'serious');
   });
   expect(violations, JSON.stringify(violations, null, 2)).toEqual([]);
+}
+
+async function expectNoHorizontalOverflow(page: Page, rootSelector: string) {
+  const overflow = await page.evaluate((selector) => {
+    const root = document.querySelector(selector);
+    const viewportWidth = document.documentElement.clientWidth;
+    if (!root) return [{ selector, reason: 'raiz não encontrada' }];
+    const elements = [root, ...root.querySelectorAll('*')];
+    return elements.flatMap((element) => {
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      if (style.display === 'none' || style.visibility === 'hidden' || rect.width <= 1 || rect.height <= 1) return [];
+      if (rect.left >= -0.5 && rect.right <= viewportWidth + 0.5) return [];
+      return [{
+        selector: element.id ? `#${element.id}` : element.getAttribute('data-testid') ?? element.tagName.toLowerCase(),
+        left: Math.round(rect.left * 10) / 10,
+        right: Math.round(rect.right * 10) / 10,
+        viewportWidth,
+      }];
+    }).slice(0, 12);
+  }, rootSelector);
+  expect(overflow, JSON.stringify(overflow, null, 2)).toEqual([]);
 }
 
 test('páginas públicas críticas não têm violações axe sérias', async ({ page }) => {
@@ -31,12 +54,15 @@ test('cadastro, onboarding e adição rápida preservam o fluxo principal', asyn
   await page.getByRole('button', { name: 'Criar conta' }).click();
   await expect(page).toHaveURL(/\/onboarding$/);
 
+  await page.setViewportSize({ width: 320, height: 740 });
   const birthDateBox = await page.getByLabel('Data de nascimento').boundingBox();
   const viewport = page.viewportSize();
   expect(birthDateBox).not.toBeNull();
   expect(viewport).not.toBeNull();
   expect(birthDateBox!.x + birthDateBox!.width).toBeLessThanOrEqual(viewport!.width);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await expectNoHorizontalOverflow(page, 'form');
+  await page.setViewportSize({ width: 393, height: 852 });
+  await expectNoHorizontalOverflow(page, 'form');
 
   await page.getByLabel('Como podemos chamar você?').fill('Pessoa E2E');
   await page.getByLabel('Data de nascimento').fill('1990-05-10');
@@ -63,10 +89,11 @@ test('cadastro, onboarding e adição rápida preservam o fluxo principal', asyn
   await page.reload();
   await expect.poll(() => db.auditEvent.count({ where: { actorUserId: e2eUser.id, action: 'session.rotate', objectId: e2eSession.id } })).toBe(1);
   await expect(page.getByRole('heading', { name: 'Olá, Pessoa.' })).toBeVisible();
+
   await page.goto('/registro');
   const morningSnack = page.getByRole('article').filter({ hasText: 'Lanche da manhã' });
   await morningSnack.getByRole('button', { name: 'Adicionar em Lanche da manhã' }).click();
-  await expect(page.getByLabel('Refeição')).toHaveValue('lanche-da-manha');
+  await expect(page.getByLabel('Refeição', { exact: true })).toHaveValue('lanche-da-manha');
   await expect(page.getByRole('button', { name: 'Usar código de barras' })).toBeVisible();
   await page.getByRole('button', { name: 'Usar código de barras' }).click();
   await expect(page.getByRole('heading', { name: 'Ler código de barras' })).toBeVisible();
@@ -137,7 +164,8 @@ test('cadastro, onboarding e adição rápida preservam o fluxo principal', asyn
   expect(dialogOpened).toBe(false);
   await expectNoSeriousAccessibilityViolations(page);
 
-  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  const e2eProfile = await db.profile.findUniqueOrThrow({ where: { userId: e2eUser.id } });
+  const yesterday = shiftLogicalDate(logicalDateKey(new Date(), e2eProfile.timezone ?? 'America/Sao_Paulo', e2eProfile.dayClosesAtMinutes), -1)!;
   await page.goto('/registro?date=' + yesterday);
   await page.getByTestId('diary-action-quick').click();
   await page.getByLabel('Descrição').fill('Registro retroativo');
@@ -236,7 +264,13 @@ test('cadastro, onboarding e adição rápida preservam o fluxo principal', asyn
   await page.getByRole('button', { name: 'Gerar sugestão revisável' }).click();
   await expect(page.getByRole('heading', { name: 'Revisão obrigatória antes de ativar' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Revisão obrigatória antes de ativar' })).toContainText('Força');
-  await expect(page.getByRole('region', { name: 'Revisão obrigatória antes de ativar' })).toContainText('E · Bíceps, tríceps e antebraços');
+  await expect(page.getByRole('region', { name: 'Revisão obrigatória antes de ativar' })).toContainText('Treino ABCDE');
+  await expect(page.getByTestId('workout-generation-review').getByLabel('Dia E: Bíceps, tríceps e antebraços')).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 740 });
+  await expectNoHorizontalOverflow(page, '[data-testid="workout-generation-review"]');
+  await expectNoHorizontalOverflow(page, '[data-testid="workout-builder"]');
+  await page.setViewportSize({ width: 393, height: 852 });
+  await expectNoHorizontalOverflow(page, '[data-testid="workout-builder"]');
   const exerciseSearch = page.getByLabel('Pesquisar exercício');
   await exerciseSearch.fill('crucifixo');
   await expect(page.getByRole('button', { name: /Crucifixo máquina/ })).toBeVisible();

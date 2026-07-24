@@ -27,6 +27,7 @@ html {
 body {
   min-height: 100dvh;
   margin: 0;
+  overflow-x: clip;
   background:
     radial-gradient(circle at 5% 0%, rgb(216 242 74 / 20%), transparent 26rem),
     var(--paper);
@@ -65,6 +66,8 @@ a {
 }
 
 .card {
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid var(--line);
   border-radius: 1.5rem;
   background: rgb(255 255 255 / 92%);
@@ -131,6 +134,31 @@ a {
   transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
+.field input[type="date"],
+.mobile-date-control {
+  display: block;
+  inline-size: 100%;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  color-scheme: light;
+}
+
+.field input[type="date"]::-webkit-date-and-time-value,
+.mobile-date-control::-webkit-date-and-time-value {
+  min-width: 0;
+  margin: 0;
+  text-align: left;
+}
+
+.field input[type="date"]::-webkit-calendar-picker-indicator,
+.mobile-date-control::-webkit-calendar-picker-indicator {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0.25rem;
+}
+
 .field input:hover,
 .field select:hover,
 .field textarea:hover {
@@ -148,6 +176,8 @@ a {
 .button-primary,
 .button-secondary {
   display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
   min-height: 3.25rem;
   align-items: center;
   justify-content: center;

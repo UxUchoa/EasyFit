@@ -7,6 +7,7 @@ import { logicalDateKey, parseLogicalDate } from "@/lib/diary/date";
 import { findTodaySummaryDay } from "@/lib/diary/service";
 import { aggregateNutrition } from "@/lib/diary/nutrition";
 import { STANDARD_MEALS, mealLabel } from "@/lib/diary/constants";
+import { dietPlanSnapshotSchema, groupDietItemsByMeal, itemsForDietDate } from "@/lib/imports/snapshot";
 
 export const metadata: Metadata = { title: "Hoje" };
 
@@ -18,13 +19,20 @@ export default async function TodayPage() {
     user.profile?.timezone ?? "America/Sao_Paulo",
     user.profile?.dayClosesAtMinutes ?? 0,
   );
-  const [goal, day] = await Promise.all([
+  const [goal, day, activeDietPlan] = await Promise.all([
     db.goalPlan.findFirst({
       where: { userId: user.id, validUntil: null },
       orderBy: { validFrom: "desc" },
       select: { calorieTarget: true, proteinGrams: true, carbohydrateGrams: true, fatGrams: true },
     }),
     findTodaySummaryDay(user.id, parseLogicalDate(date)!),
+    db.dietPlan.findFirst({
+      where: { userId: user.id, active: true },
+      select: {
+        name: true,
+        versions: { orderBy: { version: "desc" }, take: 1, select: { snapshot: true } },
+      },
+    }),
   ]);
   const calorieTarget = goal?.calorieTarget ?? 0;
   const entries = day?.meals.flatMap((meal) => meal.entries.filter((entry) => entry.kind === "CONSUMED")) ?? [];
@@ -43,6 +51,20 @@ export default async function TodayPage() {
   const calorieBalance = calorieTarget - totals.calories;
   const meals = day?.meals ?? STANDARD_MEALS.map((meal) => ({ ...meal, id: meal.slug, customName: null, entries: [] }));
   const activeWorkout = day?.workouts.find((workout) => workout.status === "IN_PROGRESS" || workout.status === "PLANNED");
+  const activeDietSnapshot = activeDietPlan?.versions[0]
+    ? dietPlanSnapshotSchema.safeParse(activeDietPlan.versions[0].snapshot)
+    : null;
+  const activeDietItems = activeDietSnapshot?.success
+    ? itemsForDietDate(activeDietSnapshot.data, date)
+    : [];
+  const activeDietMeals = new Map(
+    groupDietItemsByMeal(activeDietItems).flatMap((meal) => meal.slug ? [[meal.slug, {
+      itemCount: meal.items.length,
+      resolvedCount: meal.items.filter((item) => item.nutrition !== null).length,
+      calories: meal.items.reduce((sum, item) => sum + (item.nutrition?.calories ?? 0), 0),
+      reviewCount: meal.items.filter((item) => item.nutrition === null).length,
+    }] as const] : []),
+  );
 
   return (
     <main className="shell pb-10 pt-5">
@@ -81,6 +103,16 @@ export default async function TodayPage() {
 
       <section aria-labelledby="meals-title" className="mt-10">
         <div className="flex items-center justify-between gap-4"><div><p className="eyebrow">Diário alimentar</p><h2 id="meals-title" className="mt-2 text-2xl font-black">Refeições</h2></div><Link href="/registro" className="text-sm font-black text-[#166534] underline-offset-4 hover:underline">Ver registro</Link></div>
+        {activeDietPlan && (
+          <aside className="mt-4 grid min-w-0 gap-3 rounded-2xl border border-[#cdddbf] bg-[#f4f9ec] p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center" aria-label={`Dieta ativa: ${activeDietPlan.name}`}>
+            <div className="min-w-0">
+              <p className="text-xs font-black uppercase tracking-[.12em] text-[#166534]">Plano alimentar ativo</p>
+              <p className="mt-1 break-words font-black">{activeDietPlan.name}</p>
+              <p className="mt-1 text-xs leading-5 text-[#657168]">{activeDietItems.length ? `${activeDietItems.length} ${activeDietItems.length === 1 ? "alimento prescrito" : "alimentos prescritos"} para hoje.` : "Este plano não possui refeições prescritas para hoje."}</p>
+            </div>
+            <Link href={`/dieta?date=${date}`} className="button-secondary w-full !min-h-11 !px-4 sm:w-auto">Ver dieta de hoje</Link>
+          </aside>
+        )}
         <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {meals.map((meal) => {
             const label = mealLabel(meal.slug, meal.customName);
@@ -88,10 +120,16 @@ export default async function TodayPage() {
             const plannedEntries = meal.entries.filter((entry) => entry.kind === 'PLANNED');
             const calories = consumedEntries.reduce((sum, entry) => sum + Number(entry.snapshotCalories), 0);
             const plannedCalories = plannedEntries.reduce((sum, entry) => sum + Number(entry.snapshotCalories), 0);
+            const dietMeal = activeDietMeals.get(meal.slug);
+            const plannedSummary = plannedEntries.length
+              ? `${plannedEntries.length} ${plannedEntries.length === 1 ? "item planejado" : "itens planejados"} no diário · ${Math.round(plannedCalories)} kcal`
+              : dietMeal
+                ? `${dietMeal.itemCount} ${dietMeal.itemCount === 1 ? "alimento" : "alimentos"} na dieta${dietMeal.resolvedCount ? ` · ${Math.round(dietMeal.calories)} kcal previstas` : " · nutrientes a revisar"}${dietMeal.reviewCount ? ` · ${dietMeal.reviewCount} a revisar` : ""}`
+                : "Nada planejado";
             return (
-            <article key={meal.slug} className="group flex min-h-28 items-center justify-between rounded-2xl border border-[#dfe5dc] bg-white p-5">
-              <div><h3 className='font-black'>{label}</h3><p className='mt-1 text-sm text-[#748078]'>{consumedEntries.length ? `${consumedEntries.length} ${consumedEntries.length === 1 ? 'item realizado' : 'itens realizados'} · ${Math.round(calories)} kcal` : 'Nada realizado'}</p><p className='mt-1 text-xs font-bold text-[#8a6c00]'>{plannedEntries.length ? `${plannedEntries.length} planejado(s) · ${Math.round(plannedCalories)} kcal` : 'Nada planejado'}</p></div>
-              <Link href={`/registro?date=${date}`} className="grid size-11 place-items-center rounded-full bg-[#edf4eb] text-xl font-black text-[#166534] no-underline group-hover:bg-[#d8f24a]" aria-label={`Adicionar alimento em ${label}`}>+</Link>
+            <article key={meal.slug} data-testid={`today-meal-${meal.slug}`} className={`group flex min-h-32 min-w-0 items-center justify-between gap-3 rounded-2xl border bg-white p-5 ${dietMeal ? "border-[#cdddbf]" : "border-[#dfe5dc]"}`}>
+              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className='font-black'>{label}</h3>{dietMeal && <span className="rounded-full bg-[#edf4e9] px-2 py-1 text-[9px] font-black text-[#166534]">NA DIETA</span>}</div><p className='mt-1 text-sm text-[#748078]'>{consumedEntries.length ? `${consumedEntries.length} ${consumedEntries.length === 1 ? 'item realizado' : 'itens realizados'} · ${Math.round(calories)} kcal` : 'Nada realizado'}</p><p className={`mt-1 break-words text-xs font-bold ${dietMeal || plannedEntries.length ? "text-[#725d00]" : "text-[#8a938c]"}`}>{plannedSummary}</p>{dietMeal && <Link href={`/dieta?date=${date}`} className="mt-2 inline-flex text-xs font-black text-[#166534] underline-offset-4 hover:underline">Ver refeição na dieta →</Link>}</div>
+              <Link href={`/registro?date=${date}`} className="grid size-11 shrink-0 place-items-center rounded-full bg-[#edf4eb] text-xl font-black text-[#166534] no-underline group-hover:bg-[#d8f24a]" aria-label={`Adicionar alimento em ${label}`}>+</Link>
             </article>
           )})}
         </div>

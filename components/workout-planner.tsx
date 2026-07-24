@@ -72,6 +72,10 @@ function focusLabel(focus: WorkoutFocus) {
   return focus === "STRENGTH" ? "Força" : "Hipertrofia";
 }
 
+function generationDivisionLabel(division: GenerationDivision) {
+  return division === "FULL_BODY" ? "Full body" : `Treino ${division}`;
+}
+
 function savedFocus(inputs: unknown) {
   if (!inputs || typeof inputs !== "object" || !("focus" in inputs)) return null;
   const focus = (inputs as { focus?: unknown }).focus;
@@ -100,33 +104,33 @@ function SortableDraftExercise({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 10 : undefined }}
-      className={`rounded-2xl border bg-white p-4 ${isDragging ? "border-[#166534] opacity-80 shadow-xl" : "border-[#dfe5dc]"}`}
+      className={`min-w-0 max-w-full rounded-2xl border bg-white p-3 sm:p-4 ${isDragging ? "border-[#166534] opacity-80 shadow-xl" : "border-[#dfe5dc]"}`}
       data-testid={`draft-exercise-${item.draftId}`}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="grid min-w-0 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-start gap-2 sm:gap-3">
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label={`Arrastar ${item.name} para reordenar`}
+          className="flex size-11 touch-none cursor-grab items-center justify-center rounded-xl border border-[#dfe5dc] bg-[#f4f6f1] text-xl font-black text-[#52604e] active:cursor-grabbing"
+        >
+          <span aria-hidden="true">⠿</span>
+        </button>
         <div className="flex min-w-0 items-start gap-2">
-          <button
-            type="button"
-            {...attributes}
-            {...listeners}
-            aria-label={`Arrastar ${item.name} para reordenar`}
-            className="flex min-h-11 min-w-11 touch-none cursor-grab items-center justify-center rounded-xl border border-[#dfe5dc] bg-[#f4f6f1] text-xl font-black text-[#52604e] active:cursor-grabbing"
-          >
-            <span aria-hidden="true">⠿</span>
-          </button>
           <div className="min-w-0 pt-1">
             <p className="text-xs font-bold text-[#657168]">Exercício {positionInDay + 1}</p>
-            <h3 className="truncate font-black">{item.name}</h3>
+            <h3 className="break-words font-black leading-5">{item.name}</h3>
           </div>
         </div>
-        <button type="button" className="min-h-11 px-2 text-xs font-bold text-[#b42318]" onClick={() => remove(item.draftId)}>Remover</button>
+        <button type="button" className="min-h-11 shrink-0 px-1 text-xs font-bold text-[#b42318] sm:px-2" onClick={() => remove(item.draftId)}>Remover</button>
       </div>
-      <div className="mt-3 flex items-center gap-2" aria-label={`Ordenação de ${item.name}`}>
-        <button type="button" className="rounded-xl border border-[#dfe5dc] px-3 py-2 text-xs font-bold disabled:opacity-40" disabled={positionInDay === 0} onClick={() => move(item.draftId, -1)} aria-label={`Mover ${item.name} para cima`}>↑ Subir</button>
-        <button type="button" className="rounded-xl border border-[#dfe5dc] px-3 py-2 text-xs font-bold disabled:opacity-40" disabled={positionInDay === totalInDay - 1} onClick={() => move(item.draftId, 1)} aria-label={`Mover ${item.name} para baixo`}>↓ Descer</button>
-        <span className="ml-auto text-xs text-[#657168]">Arraste pela alça</span>
+      <div className="mt-3 grid min-w-0 grid-cols-2 gap-2" aria-label={`Ordenação de ${item.name}`}>
+        <button type="button" className="min-w-0 rounded-xl border border-[#dfe5dc] px-2 py-2 text-xs font-bold disabled:opacity-40" disabled={positionInDay === 0} onClick={() => move(item.draftId, -1)} aria-label={`Mover ${item.name} para cima`}>↑ Subir</button>
+        <button type="button" className="min-w-0 rounded-xl border border-[#dfe5dc] px-2 py-2 text-xs font-bold disabled:opacity-40" disabled={positionInDay === totalInDay - 1} onClick={() => move(item.draftId, 1)} aria-label={`Mover ${item.name} para baixo`}>↓ Descer</button>
+        <span className="col-span-2 text-center text-[0.7rem] text-[#657168] sm:text-right">Arraste pela alça ou use os botões</span>
       </div>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-3 grid min-w-0 grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
         <div className="field"><label htmlFor={`day-${item.draftId}`}>Dia</label><input id={`day-${item.draftId}`} type="number" min="1" max="7" value={item.dayIndex + 1} onChange={(event) => update(index, { dayIndex: Number(event.target.value) - 1 })} /></div>
         <div className="field"><label htmlFor={`sets-${item.draftId}`}>Séries</label><input id={`sets-${item.draftId}`} type="number" min="1" max="12" value={item.targetSets} onChange={(event) => update(index, { targetSets: Number(event.target.value) })} /></div>
         <div className="field"><label htmlFor={`reps-${item.draftId}`}>Repetições</label><input id={`reps-${item.draftId}`} value={item.targetReps} maxLength={40} onChange={(event) => update(index, { targetReps: event.target.value })} /></div>
@@ -423,14 +427,28 @@ export function WorkoutPlanner({
       <p className="mt-3 text-xs leading-5 text-[#657168]">Toda sugestão é uma orientação geral e precisa ser revisada por você. Restrições, dor ou condições de saúde exigem avaliação profissional.</p>
       <p role="status" aria-live="polite" className={`mt-4 min-h-6 text-sm font-bold ${error ? "text-[#b42318]" : "text-transparent"}`}>{error || "Tudo certo"}</p>
       {showBuilder && !generation && <div className="field mt-2 max-w-xs"><label htmlFor="plan-division">Divisão do plano</label><select id="plan-division" value={division} onChange={(event) => setDivision(event.target.value)}><option value="FULL_BODY">Full body</option><option value="A">A</option><option value="AB">AB</option><option value="ABC">ABC</option><option value="ABCD">ABCD</option><option value="ABCDE">ABCDE</option><option value="CUSTOM">Personalizada</option></select></div>}
-      {showBuilder && generation && <section className='mt-4 rounded-2xl border border-[#d9e5b5] bg-[#f8fce9] p-5' aria-labelledby='generation-review-title'><p className='eyebrow'>Regra {generation.ruleVersion} · {focusLabel(generation.focus)}</p><h2 id='generation-review-title' className='mt-2 text-xl font-black'>Revisão obrigatória antes de ativar</h2><div className='mt-3 flex flex-wrap gap-2'>{generation.dayLabels.map((label, index) => <span key={`${label}-${index}`} className='rounded-full bg-white px-3 py-2 text-xs font-black text-[#166534]'>{generation.division === 'FULL_BODY' ? 'Full body' : String.fromCharCode(65 + index)} · {label}</span>)}</div><ul className='mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-[#657168]'>{generation.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul><p className='mt-3 text-sm font-bold text-[#166534]'>Altere nome, dias, exercícios, séries, repetições ou descanso abaixo. O plano só será ativado ao pressionar “Salvar plano”.</p></section>}
+      {showBuilder && generation && (
+        <section data-testid="workout-generation-review" className="mt-4 min-w-0 rounded-2xl border border-[#d9e5b5] bg-[#f8fce9] p-4 sm:p-5" aria-labelledby="generation-review-title">
+          <p className="eyebrow">Sugestão gerada</p>
+          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
+            <h2 id="generation-review-title" className="mr-auto text-lg font-black sm:text-xl">Revisão obrigatória antes de ativar</h2>
+            <span className="rounded-full bg-[#166534] px-3 py-1.5 text-xs font-black text-white">{generationDivisionLabel(generation.division)} · {focusLabel(generation.focus)}</span>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2" aria-label="Dias da sugestão">
+            {generation.dayLabels.map((label, index) => {
+              const day = generation.division === "FULL_BODY" ? String(index + 1) : String.fromCharCode(65 + index);
+              return <span key={`${label}-${index}`} title={label} aria-label={`Dia ${day}: ${label}`} className="grid size-9 place-items-center rounded-full border border-[#d9e5b5] bg-white text-xs font-black text-[#166534]">{day}</span>;
+            })}
+          </div>
+        </section>
+      )}
 
       {showBuilder && (
-        <section className="card mt-4 p-5 sm:p-7" aria-labelledby="builder-title">
-          <div className="flex items-start justify-between gap-4">
-            <div>
+        <section data-testid="workout-builder" className="card mt-4 min-w-0 max-w-full p-4 sm:p-7" aria-labelledby="builder-title">
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_2.75rem] items-start gap-3 sm:gap-4">
+            <div className="min-w-0">
               <p className="eyebrow">{importReview ? "Importação JSON" : editingId ? "Nova versão" : generation ? "Sugestão gerada" : "Plano manual"}</p>
-              <h2 id="builder-title" className="mt-2 text-2xl font-black">Monte seus dias de treino</h2>
+              <h2 id="builder-title" className="mt-2 break-words text-xl font-black sm:text-2xl">Monte seus dias de treino</h2>
             </div>
             <button type="button" className="grid size-11 place-items-center rounded-full border border-[#dfe5dc] bg-white text-xl" onClick={() => setShowBuilder(false)} aria-label="Fechar">×</button>
           </div>
@@ -458,8 +476,8 @@ export function WorkoutPlanner({
               {exerciseQuery.trim().length >= 2 && (
                 <div className="mt-3 grid gap-2" aria-live="polite">
                   {filteredExercises.map((exercise) => (
-                    <button key={exercise.id} type="button" className="flex min-h-12 items-center justify-between gap-3 rounded-2xl border border-[#dfe5dc] bg-white px-4 py-3 text-left hover:border-[#166534]" onClick={() => addExercise(exercise)}>
-                      <span><strong className="block">{exercise.name}</strong><small className="mt-1 block text-[#657168]">{exercise.muscleGroup}{exercise.equipment ? ` · ${exercise.equipment}` : ""}</small></span>
+                    <button key={exercise.id} type="button" className="flex min-h-12 min-w-0 max-w-full items-center justify-between gap-3 rounded-2xl border border-[#dfe5dc] bg-white px-4 py-3 text-left hover:border-[#166534]" onClick={() => addExercise(exercise)}>
+                      <span className="min-w-0"><strong className="block break-words">{exercise.name}</strong><small className="mt-1 block break-words text-[#657168]">{exercise.muscleGroup}{exercise.equipment ? ` · ${exercise.equipment}` : ""}</small></span>
                       <span className="shrink-0 text-xl font-black text-[#166534]" aria-hidden="true">+</span>
                     </button>
                   ))}
@@ -475,8 +493,8 @@ export function WorkoutPlanner({
                   {draftDays.map((dayIndex) => {
                     const dayItems = draft.filter((item) => item.dayIndex === dayIndex);
                     return (
-                      <section key={dayIndex} className="grid gap-3 rounded-3xl bg-[#f4f6f1] p-3 sm:p-4" aria-labelledby={`draft-day-${dayIndex}`}>
-                        <div className="flex items-center justify-between gap-3 px-1"><h3 id={`draft-day-${dayIndex}`} className="font-black">{workoutDayLabel(division, dayIndex)}</h3><span className="text-xs font-bold text-[#657168]">{dayItems.length} {dayItems.length === 1 ? "exercício" : "exercícios"}</span></div>
+                      <section key={dayIndex} data-testid={`workout-draft-day-${dayIndex}`} className="grid min-w-0 max-w-full gap-3 rounded-2xl bg-[#f4f6f1] p-2 sm:rounded-3xl sm:p-4" aria-labelledby={`draft-day-${dayIndex}`}>
+                        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 px-1"><h3 id={`draft-day-${dayIndex}`} className="min-w-0 break-words font-black leading-5">{workoutDayLabel(division, dayIndex)}</h3><span className="whitespace-nowrap text-xs font-bold text-[#657168]">{dayItems.length} {dayItems.length === 1 ? "exercício" : "exercícios"}</span></div>
                         <SortableContext items={dayItems.map((item) => item.draftId)} strategy={verticalListSortingStrategy}>
                           {dayItems.map((item, positionInDay) => {
                             const index = draft.findIndex((candidate) => candidate.draftId === item.draftId);
@@ -495,9 +513,9 @@ export function WorkoutPlanner({
         </section>
       )}
 
-      <section className="mt-10" aria-labelledby="plans-title"><p className="eyebrow">Planos ativos</p><h2 id="plans-title" className="mt-2 text-2xl font-black">Escolha o treino de hoje</h2><div className="mt-5 grid gap-4 lg:grid-cols-2">{activePlans.map((plan) => { const version = plan.versions[0]; const days = [...new Set((version?.exercises ?? []).map((item) => item.dayIndex))]; return <article key={plan.id} className="card p-6"><div className="flex items-start justify-between gap-4"><div><span className="inline-flex rounded-full bg-[#eef4e9] px-3 py-1 text-xs font-black text-[#166534]">{plan.division === "FULL_BODY" ? "Full body" : `Divisão ${plan.division}`}</span>{savedFocus(version?.generationInputs) && <span className="ml-2 inline-flex rounded-full bg-[#f4f6f1] px-3 py-1 text-xs font-black text-[#52604e]">{savedFocus(version?.generationInputs)}</span>}<h3 className="mt-2 text-xl font-black">{plan.name}</h3><p className="mt-1 text-sm text-[#657168]">Versão {version?.version ?? 1} · {days.length} {days.length === 1 ? "dia" : "dias"}</p>{version?.generatedByRuleVersion && <p className="mt-2 text-xs font-bold text-[#725d00]">Sugestão gerada pela regra {version.generatedByRuleVersion} e confirmada após revisão.</p>}</div><button className="rounded-full border border-[#dfe5dc] px-3 py-2 text-xs font-bold" onClick={() => editPlan(plan)}>Editar</button></div><div className="mt-5 grid gap-2">{days.map((dayIndex) => { const count = version?.exercises.filter((item) => item.dayIndex === dayIndex).length ?? 0; return <button key={dayIndex} data-testid={`workout-day-${dayIndex}`} className="button-secondary w-full !justify-between" disabled={pending || Boolean(activeSession)} onClick={() => startWorkout(plan.id, dayIndex)}><span>{workoutDayLabel(plan.division, dayIndex)} · {count} exercícios</span><span aria-hidden="true">→</span></button>; })}</div><button className="mt-4 text-xs font-bold text-[#b42318]" disabled={pending} onClick={() => deletePlan(plan.id, plan.name)}>Excluir plano</button></article>; })}{activePlans.length === 0 && <div className="card p-7 lg:col-span-2"><h3 className="text-xl font-black">Nenhum plano ativo</h3><p className="mt-3 text-[#657168]">Crie um plano manual ou gere uma sugestão revisável para começar.</p></div>}</div></section>
+      <section className="mt-10" aria-labelledby="plans-title"><p className="eyebrow">Planos ativos</p><h2 id="plans-title" className="mt-2 text-2xl font-black">Escolha o treino de hoje</h2><div className="mt-5 grid gap-4 lg:grid-cols-2">{activePlans.map((plan) => { const version = plan.versions[0]; const days = [...new Set((version?.exercises ?? []).map((item) => item.dayIndex))]; return <article key={plan.id} data-testid="workout-active-plan" className="card min-w-0 max-w-full p-4 sm:p-6"><div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 sm:gap-4"><div className="min-w-0"><div className="flex min-w-0 flex-wrap gap-2"><span className="inline-flex rounded-full bg-[#eef4e9] px-3 py-1 text-xs font-black text-[#166534]">{plan.division === "FULL_BODY" ? "Full body" : `Divisão ${plan.division}`}</span>{savedFocus(version?.generationInputs) && <span className="inline-flex rounded-full bg-[#f4f6f1] px-3 py-1 text-xs font-black text-[#52604e]">{savedFocus(version?.generationInputs)}</span>}</div><h3 className="mt-2 break-words text-xl font-black">{plan.name}</h3><p className="mt-1 text-sm text-[#657168]">Versão {version?.version ?? 1} · {days.length} {days.length === 1 ? "dia" : "dias"}</p>{version?.generatedByRuleVersion && <p className="mt-2 break-words text-xs font-bold text-[#725d00]">Sugestão gerada pela regra {version.generatedByRuleVersion} e confirmada após revisão.</p>}</div><button className="shrink-0 rounded-full border border-[#dfe5dc] px-3 py-2 text-xs font-bold" onClick={() => editPlan(plan)}>Editar</button></div><div className="mt-5 grid min-w-0 gap-2">{days.map((dayIndex) => { const count = version?.exercises.filter((item) => item.dayIndex === dayIndex).length ?? 0; return <button key={dayIndex} data-testid={`workout-day-${dayIndex}`} className="button-secondary w-full min-w-0 gap-2 whitespace-normal text-left !justify-between" disabled={pending || Boolean(activeSession)} onClick={() => startWorkout(plan.id, dayIndex)}><span className="min-w-0 break-words">{workoutDayLabel(plan.division, dayIndex)} · {count} exercícios</span><span className="shrink-0" aria-hidden="true">→</span></button>; })}</div><button className="mt-4 max-w-full text-xs font-bold text-[#b42318]" disabled={pending} onClick={() => deletePlan(plan.id, plan.name)}>Excluir plano</button></article>; })}{activePlans.length === 0 && <div className="card p-7 lg:col-span-2"><h3 className="text-xl font-black">Nenhum plano ativo</h3><p className="mt-3 text-[#657168]">Crie um plano manual ou gere uma sugestão revisável para começar.</p></div>}</div></section>
 
-      {archivedPlans.length > 0 && <section className="mt-10" aria-labelledby="archived-plans-title"><p className="eyebrow">Planos arquivados</p><h2 id="archived-plans-title" className="mt-2 text-2xl font-black">Limpe planos antigos</h2><div className="mt-4 grid gap-3">{archivedPlans.map((plan) => <article key={plan.id} className="flex items-center justify-between gap-4 rounded-2xl border border-[#dfe5dc] bg-white p-5"><div><h3 className="font-black">{plan.name}</h3><p className="mt-1 text-xs text-[#657168]">{plan.division === "FULL_BODY" ? "Full body" : `Divisão ${plan.division}`}</p></div><button className="rounded-full border border-[#fecaca] px-3 py-2 text-xs font-bold text-[#b42318]" disabled={pending} onClick={() => deletePlan(plan.id, plan.name)}>Excluir definitivamente</button></article>)}</div></section>}
+      {archivedPlans.length > 0 && <section className="mt-10" aria-labelledby="archived-plans-title"><p className="eyebrow">Planos arquivados</p><h2 id="archived-plans-title" className="mt-2 text-2xl font-black">Limpe planos antigos</h2><div className="mt-4 grid gap-3">{archivedPlans.map((plan) => <article key={plan.id} className="grid min-w-0 max-w-full gap-3 rounded-2xl border border-[#dfe5dc] bg-white p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"><div className="min-w-0"><h3 className="break-words font-black">{plan.name}</h3><p className="mt-1 text-xs text-[#657168]">{plan.division === "FULL_BODY" ? "Full body" : `Divisão ${plan.division}`}</p></div><button className="max-w-full whitespace-normal rounded-full border border-[#fecaca] px-3 py-2 text-xs font-bold text-[#b42318]" disabled={pending} onClick={() => deletePlan(plan.id, plan.name)}>Excluir definitivamente</button></article>)}</div></section>}
 
       {recentSessions.length > 0 && <section className="mt-10"><p className="eyebrow">Histórico recente</p><h2 className="mt-2 text-2xl font-black">Treinos concluídos</h2><div className="mt-4 grid gap-3">{recentSessions.map((session) => <Link key={session.id} href={`/treino/sessao/${session.id}`} className="flex items-center justify-between rounded-2xl border border-[#dfe5dc] bg-white p-5 text-inherit no-underline"><span><b>{session.name}</b><br /><small className="text-[#657168]">{session.completedAt ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(session.completedAt)) : "Concluído"}</small></span><span aria-hidden="true">→</span></Link>)}</div></section>}
     </>
