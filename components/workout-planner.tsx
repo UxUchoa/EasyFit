@@ -390,11 +390,52 @@ export function WorkoutPlanner({
     setPending(false);
   }
 
+  function renderActivePlans() {
+    return (
+      <section data-testid="workout-plans-section" className="mt-10" aria-labelledby="plans-title">
+        <p className="eyebrow">Planos ativos</p>
+        <h2 id="plans-title" className="mt-2 text-2xl font-black">Escolha o treino de hoje</h2>
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          {activePlans.map((plan) => {
+            const version = plan.versions[0];
+            const days = [...new Set((version?.exercises ?? []).map((item) => item.dayIndex))];
+            return (
+              <article key={plan.id} data-testid="workout-active-plan" className="card min-w-0 max-w-full p-4 sm:p-6">
+                <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 sm:gap-4">
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 flex-wrap gap-2">
+                      <span className="inline-flex rounded-full bg-[#eef4e9] px-3 py-1 text-xs font-black text-[#166534]">{plan.division === "FULL_BODY" ? "Full body" : `Divisão ${plan.division}`}</span>
+                      {savedFocus(version?.generationInputs) && <span className="inline-flex rounded-full bg-[#f4f6f1] px-3 py-1 text-xs font-black text-[#52604e]">{savedFocus(version?.generationInputs)}</span>}
+                    </div>
+                    <h3 className="mt-2 break-words text-xl font-black">{plan.name}</h3>
+                    <p className="mt-1 text-sm text-[#657168]">Versão {version?.version ?? 1} · {days.length} {days.length === 1 ? "dia" : "dias"}</p>
+                    {version?.generatedByRuleVersion && <p className="mt-2 break-words text-xs font-bold text-[#725d00]">Sugestão gerada pela regra {version.generatedByRuleVersion} e confirmada após revisão.</p>}
+                  </div>
+                  <button className="shrink-0 rounded-full border border-[#dfe5dc] px-3 py-2 text-xs font-bold" onClick={() => editPlan(plan)}>Editar</button>
+                </div>
+                <div className="mt-5 grid min-w-0 gap-2">
+                  {days.map((dayIndex) => {
+                    const count = version?.exercises.filter((item) => item.dayIndex === dayIndex).length ?? 0;
+                    return <button key={dayIndex} data-testid={`workout-day-${dayIndex}`} className="button-secondary w-full min-w-0 gap-2 whitespace-normal text-left !justify-between" disabled={pending || Boolean(activeSession)} onClick={() => startWorkout(plan.id, dayIndex)}><span className="min-w-0 break-words">{workoutDayLabel(plan.division, dayIndex)} · {count} exercícios</span><span className="shrink-0" aria-hidden="true">→</span></button>;
+                  })}
+                </div>
+                <button className="mt-4 max-w-full text-xs font-bold text-[#b42318]" disabled={pending} onClick={() => deletePlan(plan.id, plan.name)}>Excluir plano</button>
+              </article>
+            );
+          })}
+          {activePlans.length === 0 && <div className="card p-7 lg:col-span-2"><h3 className="text-xl font-black">Nenhum plano ativo</h3><p className="mt-3 text-[#657168]">Crie um plano manual ou gere uma sugestão revisável para começar.</p></div>}
+        </div>
+      </section>
+    );
+  }
+
   return (
     <>
       {activeSession && <section className="mt-8 rounded-[1.75rem] bg-[#153d28] p-6 text-white shadow-xl"><p className="text-xs font-black tracking-[.14em] text-[#d8f24a]">EM ANDAMENTO</p><h2 className="mt-2 text-2xl font-black">{activeSession.name}</h2><p className="mt-2 text-sm text-white/65">As séries já registradas estão salvas.</p><Link className="button-primary mt-5 w-full !bg-[#d8f24a] !text-[#17201b]" href={`/treino/sessao/${activeSession.id}`}>Retomar treino</Link></section>}
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+      {activePlans.length > 0 && renderActivePlans()}
+
+      <div data-testid="workout-create-options" className="mt-6 grid gap-3 sm:grid-cols-2">
         <button className="button-primary" onClick={() => { setShowBuilder(true); setEditingId(null); setPlanName(""); setDivision("CUSTOM"); setDraft([]); setGeneration(null); setImportReview(null); setExerciseQuery(""); }}>Criar plano manual</button>
         <button className="button-secondary" disabled={pending} onClick={() => workoutImportRef.current?.click()}>{pending ? "Processando…" : "Importar treino em JSON"}</button>
         <input ref={workoutImportRef} className="sr-only" type="file" accept="application/json,.json" onChange={importWorkout} />
@@ -513,7 +554,7 @@ export function WorkoutPlanner({
         </section>
       )}
 
-      <section className="mt-10" aria-labelledby="plans-title"><p className="eyebrow">Planos ativos</p><h2 id="plans-title" className="mt-2 text-2xl font-black">Escolha o treino de hoje</h2><div className="mt-5 grid gap-4 lg:grid-cols-2">{activePlans.map((plan) => { const version = plan.versions[0]; const days = [...new Set((version?.exercises ?? []).map((item) => item.dayIndex))]; return <article key={plan.id} data-testid="workout-active-plan" className="card min-w-0 max-w-full p-4 sm:p-6"><div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 sm:gap-4"><div className="min-w-0"><div className="flex min-w-0 flex-wrap gap-2"><span className="inline-flex rounded-full bg-[#eef4e9] px-3 py-1 text-xs font-black text-[#166534]">{plan.division === "FULL_BODY" ? "Full body" : `Divisão ${plan.division}`}</span>{savedFocus(version?.generationInputs) && <span className="inline-flex rounded-full bg-[#f4f6f1] px-3 py-1 text-xs font-black text-[#52604e]">{savedFocus(version?.generationInputs)}</span>}</div><h3 className="mt-2 break-words text-xl font-black">{plan.name}</h3><p className="mt-1 text-sm text-[#657168]">Versão {version?.version ?? 1} · {days.length} {days.length === 1 ? "dia" : "dias"}</p>{version?.generatedByRuleVersion && <p className="mt-2 break-words text-xs font-bold text-[#725d00]">Sugestão gerada pela regra {version.generatedByRuleVersion} e confirmada após revisão.</p>}</div><button className="shrink-0 rounded-full border border-[#dfe5dc] px-3 py-2 text-xs font-bold" onClick={() => editPlan(plan)}>Editar</button></div><div className="mt-5 grid min-w-0 gap-2">{days.map((dayIndex) => { const count = version?.exercises.filter((item) => item.dayIndex === dayIndex).length ?? 0; return <button key={dayIndex} data-testid={`workout-day-${dayIndex}`} className="button-secondary w-full min-w-0 gap-2 whitespace-normal text-left !justify-between" disabled={pending || Boolean(activeSession)} onClick={() => startWorkout(plan.id, dayIndex)}><span className="min-w-0 break-words">{workoutDayLabel(plan.division, dayIndex)} · {count} exercícios</span><span className="shrink-0" aria-hidden="true">→</span></button>; })}</div><button className="mt-4 max-w-full text-xs font-bold text-[#b42318]" disabled={pending} onClick={() => deletePlan(plan.id, plan.name)}>Excluir plano</button></article>; })}{activePlans.length === 0 && <div className="card p-7 lg:col-span-2"><h3 className="text-xl font-black">Nenhum plano ativo</h3><p className="mt-3 text-[#657168]">Crie um plano manual ou gere uma sugestão revisável para começar.</p></div>}</div></section>
+      {activePlans.length === 0 && renderActivePlans()}
 
       {archivedPlans.length > 0 && <section className="mt-10" aria-labelledby="archived-plans-title"><p className="eyebrow">Planos arquivados</p><h2 id="archived-plans-title" className="mt-2 text-2xl font-black">Limpe planos antigos</h2><div className="mt-4 grid gap-3">{archivedPlans.map((plan) => <article key={plan.id} className="grid min-w-0 max-w-full gap-3 rounded-2xl border border-[#dfe5dc] bg-white p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"><div className="min-w-0"><h3 className="break-words font-black">{plan.name}</h3><p className="mt-1 text-xs text-[#657168]">{plan.division === "FULL_BODY" ? "Full body" : `Divisão ${plan.division}`}</p></div><button className="max-w-full whitespace-normal rounded-full border border-[#fecaca] px-3 py-2 text-xs font-bold text-[#b42318]" disabled={pending} onClick={() => deletePlan(plan.id, plan.name)}>Excluir definitivamente</button></article>)}</div></section>}
 

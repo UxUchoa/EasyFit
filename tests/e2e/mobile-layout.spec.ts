@@ -57,6 +57,9 @@ test('onboarding, treino e resumo da dieta ativa funcionam no mobile', async ({ 
     await expect(page).toHaveURL(/\/hoje$/);
 
     await page.goto('/treino');
+    const createOptionsWithoutPlan = await page.getByTestId('workout-create-options').boundingBox();
+    const emptyPlansSection = await page.getByTestId('workout-plans-section').boundingBox();
+    expect(createOptionsWithoutPlan?.y).toBeLessThan(emptyPlansSection?.y ?? 0);
     await page.getByLabel('Divisão do plano', { exact: true }).selectOption('ABCDE');
     await page.getByLabel('Foco do treino', { exact: true }).selectOption('STRENGTH');
     await page.getByRole('button', { name: 'Gerar sugestão revisável' }).click();
@@ -80,6 +83,9 @@ test('onboarding, treino e resumo da dieta ativa funcionam no mobile', async ({ 
     await page.getByRole('button', { name: 'Salvar plano' }).click();
     const activePlan = page.getByTestId('workout-active-plan');
     await expect(activePlan).toBeVisible();
+    const activePlansSection = await page.getByTestId('workout-plans-section').boundingBox();
+    const createOptionsWithPlan = await page.getByTestId('workout-create-options').boundingBox();
+    expect(activePlansSection?.y).toBeLessThan(createOptionsWithPlan?.y ?? 0);
     await page.setViewportSize({ width: 320, height: 740 });
     await expectContainedInViewport(page, '[data-testid="workout-active-plan"]');
     await activePlan.getByTestId('workout-day-0').click();
