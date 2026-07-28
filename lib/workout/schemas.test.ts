@@ -46,7 +46,7 @@ describe("workout validation", () => {
     expect(result.success).toBe(false);
   });
 
-  it("keeps effort optional and limits RPE to the one-to-ten scale", () => {
+  it("accepts repetitions and weight without an effort field", () => {
     const base = {
       sessionExerciseId: "cm22222222222222222222222",
       setNumber: 1,
@@ -55,6 +55,6 @@ describe("workout validation", () => {
       completed: true,
     };
     expect(exerciseSetSchema.safeParse(base).success).toBe(true);
-    expect(exerciseSetSchema.safeParse({ ...base, effortRpe: 11 }).success).toBe(false);
+    expect(exerciseSetSchema.parse({ ...base, effortRpe: 8 })).not.toHaveProperty("effortRpe");
   });
 });

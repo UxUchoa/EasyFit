@@ -27,7 +27,6 @@ export async function PUT(request: NextRequest, context: RouteContext) {
   const data = {
     repetitions: parsed.data.repetitions ?? null,
     weightKg: parsed.data.weightKg ?? null,
-    effortRpe: parsed.data.effortRpe ?? null,
     completedAt: parsed.data.completed ? new Date() : null,
   };
   const set = await db.exerciseSet.upsert({

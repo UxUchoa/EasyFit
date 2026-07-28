@@ -109,6 +109,45 @@ test('onboarding, treino e resumo da dieta ativa funcionam no mobile', async ({ 
     await expectContainedInViewport(page, '[data-testid="workout-session-exercise"]');
     await expectContainedInViewport(page, '[data-testid="workout-set-form"]');
 
+    const firstSet = page.getByTestId('workout-set-form').first();
+    const repetitionsInput = firstSet.getByLabel('Repetições');
+    const weightInput = firstSet.getByLabel('Peso');
+    await expect(page.getByText('RPE', { exact: true })).toHaveCount(0);
+    await repetitionsInput.fill('12');
+    await weightInput.fill('1234.5');
+    const weightInputBox = await weightInput.boundingBox();
+    expect(weightInputBox).not.toBeNull();
+    expect(weightInputBox!.width).toBeGreaterThan(150);
+    await page.setViewportSize({ width: 1024, height: 800 });
+    await expectContainedInViewport(page, '[data-testid="workout-set-form"]');
+    const desktopWeightInputBox = await weightInput.boundingBox();
+    expect(desktopWeightInputBox).not.toBeNull();
+    expect(desktopWeightInputBox!.width).toBeGreaterThan(160);
+    await page.setViewportSize({ width: 320, height: 740 });
+
+    const restSelect = page.getByLabel('Intervalo de descanso');
+    await expect(restSelect).toHaveValue('120');
+    const durationEstimate = page.getByTestId('workout-duration-estimate');
+    const durationAt120 = await durationEstimate.textContent();
+    await restSelect.selectOption('60');
+    const durationAt60 = await durationEstimate.textContent();
+    expect(durationAt60).not.toBe(durationAt120);
+    await page.getByRole('button', { name: 'Iniciar descanso' }).click();
+    await expect(page.getByTestId('workout-rest-countdown')).toHaveText('1:00');
+    const durationBeforeReset = await durationEstimate.textContent();
+    await page.waitForTimeout(1_100);
+    await page.getByRole('button', { name: 'Resetar' }).click();
+    await expect(page.getByTestId('workout-rest-countdown')).toHaveText('1:00');
+    await expect(durationEstimate).toHaveText(durationBeforeReset ?? '');
+    await page.getByRole('button', { name: 'Pular' }).click();
+
+    const remainingBeforeSet = await durationEstimate.textContent();
+    await firstSet.getByRole('button', { name: 'Concluir' }).click();
+    await expect(repetitionsInput).toHaveValue('12');
+    await expect(weightInput).toHaveValue('1234.5');
+    await expect(page.getByTestId('workout-rest-countdown')).toHaveText('1:00');
+    await expect(durationEstimate).not.toHaveText(remainingBeforeSet ?? '');
+
     const startedSessionUrl = page.url();
     await page.goto('/treino');
     await expect(page.getByTestId('active-workout-resume')).toBeVisible();
@@ -116,9 +155,19 @@ test('onboarding, treino e resumo da dieta ativa funcionam no mobile', async ({ 
     await expect(anotherWorkoutDay).toBeEnabled();
     await anotherWorkoutDay.click();
     await expect(page).toHaveURL(startedSessionUrl);
+    await expect(page.getByLabel('Intervalo de descanso')).toHaveValue('60');
 
     await page.goto('/treino');
     await page.getByTestId('complete-active-workout').click();
+    await expect(page).toHaveURL(startedSessionUrl);
+    await expect(page.getByTestId('workout-completion-summary')).toBeVisible();
+    await expect(page.getByTestId('estimated-workout-calories')).toContainText(/Gasto calórico estimado: \d+ kcal/);
+    await page.getByLabel('Calorias registradas pelo seu dispositivo (kcal)').fill('350');
+    await expect(page.getByText('Valor informado manualmente: 350 kcal')).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel('Calorias registradas pelo seu dispositivo (kcal)')).toHaveValue('350');
+
+    await page.goto('/treino');
     await expect(page.getByTestId('active-workout-resume')).toHaveCount(0);
     await expect(page.getByTestId('workout-day-0')).toBeEnabled();
 

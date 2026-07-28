@@ -390,6 +390,7 @@ export function WorkoutPlanner({
       const result = response ? ((await response.json().catch(() => null)) as { error?: string } | null) : null;
       setError(result?.error ?? "Não foi possível concluir o treino em andamento.");
     } else {
+      router.push(`/treino/sessao/${activeSession.id}`);
       router.refresh();
     }
     setPending(false);

@@ -58,6 +58,5 @@ export const exerciseSetSchema = z.object({
   setNumber: z.coerce.number().int().min(1).max(50),
   repetitions: z.coerce.number().int().min(0).max(1000).nullable().optional(),
   weightKg: z.coerce.number().min(0).max(5000).nullable().optional(),
-  effortRpe: z.coerce.number().min(1).max(10).nullable().optional(),
   completed: z.boolean().default(true),
 });
