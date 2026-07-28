@@ -377,6 +377,24 @@ export function WorkoutPlanner({
     setPending(false);
   }
 
+  async function finishActiveWorkout() {
+    if (!activeSession) return;
+    setPending(true);
+    setError("");
+    const response = await fetch(`/api/workout-sessions/${activeSession.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "COMPLETED" }),
+    }).catch(() => null);
+    if (!response?.ok) {
+      const result = response ? ((await response.json().catch(() => null)) as { error?: string } | null) : null;
+      setError(result?.error ?? "Não foi possível concluir o treino em andamento.");
+    } else {
+      router.refresh();
+    }
+    setPending(false);
+  }
+
   async function deletePlan(id: string, name: string) {
     if (!window.confirm(`Excluir definitivamente o plano “${name}”? As sessões já registradas continuarão no histórico.`)) return;
     setPending(true);
@@ -416,7 +434,7 @@ export function WorkoutPlanner({
                 <div className="mt-5 grid min-w-0 gap-2">
                   {days.map((dayIndex) => {
                     const count = version?.exercises.filter((item) => item.dayIndex === dayIndex).length ?? 0;
-                    return <button key={dayIndex} data-testid={`workout-day-${dayIndex}`} className="button-secondary w-full min-w-0 gap-2 whitespace-normal text-left !justify-between" disabled={pending || Boolean(activeSession)} onClick={() => startWorkout(plan.id, dayIndex)}><span className="min-w-0 break-words">{workoutDayLabel(plan.division, dayIndex)} · {count} exercícios</span><span className="shrink-0" aria-hidden="true">→</span></button>;
+                    return <button key={dayIndex} data-testid={`workout-day-${dayIndex}`} className="button-secondary w-full min-w-0 gap-2 whitespace-normal text-left !justify-between" disabled={pending} onClick={() => startWorkout(plan.id, dayIndex)}><span className="min-w-0 break-words">{workoutDayLabel(plan.division, dayIndex)} · {count} exercícios</span><span className="shrink-0" aria-hidden="true">→</span></button>;
                   })}
                 </div>
                 <button className="mt-4 max-w-full text-xs font-bold text-[#b42318]" disabled={pending} onClick={() => deletePlan(plan.id, plan.name)}>Excluir plano</button>
@@ -431,7 +449,7 @@ export function WorkoutPlanner({
 
   return (
     <>
-      {activeSession && <section className="mt-8 rounded-[1.75rem] bg-[#153d28] p-6 text-white shadow-xl"><p className="text-xs font-black tracking-[.14em] text-[#d8f24a]">EM ANDAMENTO</p><h2 className="mt-2 text-2xl font-black">{activeSession.name}</h2><p className="mt-2 text-sm text-white/65">As séries já registradas estão salvas.</p><Link className="button-primary mt-5 w-full !bg-[#d8f24a] !text-[#17201b]" href={`/treino/sessao/${activeSession.id}`}>Retomar treino</Link></section>}
+      {activeSession && <section data-testid="active-workout-resume" className="mt-8 rounded-[1.75rem] bg-[#153d28] p-6 text-white shadow-xl"><p className="text-xs font-black tracking-[.14em] text-[#d8f24a]">EM ANDAMENTO</p><h2 className="mt-2 text-2xl font-black">{activeSession.name}</h2><p className="mt-2 text-sm text-white/65">As séries já registradas estão salvas. Você pode retomar ou encerrar este treino por aqui.</p><div className="mt-5 grid gap-3 sm:grid-cols-2"><Link className="button-primary w-full !bg-[#d8f24a] !text-[#17201b]" href={`/treino/sessao/${activeSession.id}`}>Retomar treino</Link><button data-testid="complete-active-workout" type="button" className="button-secondary w-full !border-white/25 !bg-transparent !text-white" disabled={pending} onClick={finishActiveWorkout}>{pending ? "Concluindo…" : "Já concluí este treino"}</button></div></section>}
 
       {activePlans.length > 0 && renderActivePlans()}
 

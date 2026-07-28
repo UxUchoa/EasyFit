@@ -35,12 +35,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   if (!parsed.success) return NextResponse.json({ error: "Estado inválido." }, { status: 400 });
   const owned = await db.workoutSession.findFirst({
     where: { id, userId: session.userId, status: "IN_PROGRESS" },
-    include: { exercises: { include: { sets: { where: { completedAt: { not: null } } } } } },
+    select: { id: true },
   });
   if (!owned) return NextResponse.json({ error: "Treino em andamento não encontrado." }, { status: 404 });
-  if (parsed.data.status === "COMPLETED" && !owned.exercises.some((item) => item.sets.length > 0)) {
-    return NextResponse.json({ error: "Registre ao menos uma série antes de concluir." }, { status: 400 });
-  }
   const completedAt = new Date();
   await db.$transaction([
     db.workoutSession.update({

@@ -57,9 +57,15 @@ test('onboarding, treino e resumo da dieta ativa funcionam no mobile', async ({ 
     await expect(page).toHaveURL(/\/hoje$/);
 
     await page.goto('/treino');
-    const createOptionsWithoutPlan = await page.getByTestId('workout-create-options').boundingBox();
-    const emptyPlansSection = await page.getByTestId('workout-plans-section').boundingBox();
-    expect(createOptionsWithoutPlan?.y).toBeLessThan(emptyPlansSection?.y ?? 0);
+    const createOptionsWithoutPlanLocator = page.getByTestId('workout-create-options');
+    const emptyPlansSectionLocator = page.getByTestId('workout-plans-section');
+    await expect(createOptionsWithoutPlanLocator).toBeVisible();
+    await expect(emptyPlansSectionLocator).toBeVisible();
+    const createOptionsWithoutPlan = await createOptionsWithoutPlanLocator.boundingBox();
+    const emptyPlansSection = await emptyPlansSectionLocator.boundingBox();
+    expect(createOptionsWithoutPlan).not.toBeNull();
+    expect(emptyPlansSection).not.toBeNull();
+    expect(createOptionsWithoutPlan!.y).toBeLessThan(emptyPlansSection!.y);
     await page.getByLabel('Divisão do plano', { exact: true }).selectOption('ABCDE');
     await page.getByLabel('Foco do treino', { exact: true }).selectOption('STRENGTH');
     await page.getByRole('button', { name: 'Gerar sugestão revisável' }).click();
@@ -83,9 +89,15 @@ test('onboarding, treino e resumo da dieta ativa funcionam no mobile', async ({ 
     await page.getByRole('button', { name: 'Salvar plano' }).click();
     const activePlan = page.getByTestId('workout-active-plan');
     await expect(activePlan).toBeVisible();
-    const activePlansSection = await page.getByTestId('workout-plans-section').boundingBox();
-    const createOptionsWithPlan = await page.getByTestId('workout-create-options').boundingBox();
-    expect(activePlansSection?.y).toBeLessThan(createOptionsWithPlan?.y ?? 0);
+    const activePlansSectionLocator = page.getByTestId('workout-plans-section');
+    const createOptionsWithPlanLocator = page.getByTestId('workout-create-options');
+    await expect(activePlansSectionLocator).toBeVisible();
+    await expect(createOptionsWithPlanLocator).toBeVisible();
+    const activePlansSection = await activePlansSectionLocator.boundingBox();
+    const createOptionsWithPlan = await createOptionsWithPlanLocator.boundingBox();
+    expect(activePlansSection).not.toBeNull();
+    expect(createOptionsWithPlan).not.toBeNull();
+    expect(activePlansSection!.y).toBeLessThan(createOptionsWithPlan!.y);
     await page.setViewportSize({ width: 320, height: 740 });
     await expectContainedInViewport(page, '[data-testid="workout-active-plan"]');
     await activePlan.getByTestId('workout-day-0').click();
@@ -96,6 +108,19 @@ test('onboarding, treino e resumo da dieta ativa funcionam no mobile', async ({ 
     await expectContainedInViewport(page, '[data-testid="workout-rest-controls"]');
     await expectContainedInViewport(page, '[data-testid="workout-session-exercise"]');
     await expectContainedInViewport(page, '[data-testid="workout-set-form"]');
+
+    const startedSessionUrl = page.url();
+    await page.goto('/treino');
+    await expect(page.getByTestId('active-workout-resume')).toBeVisible();
+    const anotherWorkoutDay = page.getByTestId('workout-day-1');
+    await expect(anotherWorkoutDay).toBeEnabled();
+    await anotherWorkoutDay.click();
+    await expect(page).toHaveURL(startedSessionUrl);
+
+    await page.goto('/treino');
+    await page.getByTestId('complete-active-workout').click();
+    await expect(page.getByTestId('active-workout-resume')).toHaveCount(0);
+    await expect(page.getByTestId('workout-day-0')).toBeEnabled();
 
     const testUser = await db.user.findUniqueOrThrow({ where: { username }, include: { profile: true } });
     const date = logicalDateKey(new Date(), testUser.profile?.timezone ?? 'America/Sao_Paulo', testUser.profile?.dayClosesAtMinutes ?? 0);
