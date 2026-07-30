@@ -98,6 +98,26 @@ test('onboarding, treino e resumo da dieta ativa funcionam no mobile', async ({ 
     expect(activePlansSection).not.toBeNull();
     expect(createOptionsWithPlan).not.toBeNull();
     expect(activePlansSection!.y).toBeLessThan(createOptionsWithPlan!.y);
+
+    await activePlan.getByRole('button', { name: 'Editar' }).click();
+    const workoutBuilder = page.getByTestId('workout-builder');
+    await expect(workoutBuilder).toBeVisible();
+    await page.getByLabel('Adicionar ao').selectOption('2');
+    await page.getByLabel('Pesquisar no catálogo').fill('cadeira extensora unilateral');
+    await page.getByRole('button', { name: /^Cadeira extensora unilateral / }).click();
+    await expect(page.getByTestId('draft-day-tab-2')).toContainText(/\d+/);
+    const addedLegExercise = page.locator('[data-testid^="draft-exercise-"]').filter({ hasText: 'Cadeira extensora unilateral' });
+    await expect(addedLegExercise).toBeVisible();
+    await addedLegExercise.getByLabel('Treino de destino').selectOption('1');
+    await expect(page.getByTestId('draft-day-tab-1')).toHaveAttribute('aria-selected', 'true');
+    await expect(addedLegExercise).toBeVisible();
+    await addedLegExercise.getByLabel('Treino de destino').selectOption('2');
+    await expect(page.getByTestId('draft-day-tab-2')).toHaveAttribute('aria-selected', 'true');
+    await expect(addedLegExercise).toBeVisible();
+    await expectContainedInViewport(page, '[data-testid="workout-builder"]');
+    await page.getByRole('button', { name: 'Salvar nova versão' }).click();
+    await expect(workoutBuilder).toBeHidden();
+
     await page.setViewportSize({ width: 320, height: 740 });
     await expectContainedInViewport(page, '[data-testid="workout-active-plan"]');
     await activePlan.getByTestId('workout-day-0').click();

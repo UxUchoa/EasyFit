@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { closestCenter, DndContext, KeyboardSensor, MouseSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -57,11 +57,31 @@ const DIVISION_DAY_LABELS: Record<string, string[]> = {
   ABCDE: ["Peito", "Costas", "Pernas completas", "Ombros", "Bíceps, tríceps e antebraços"],
 };
 
+const DIVISION_DAY_COUNTS: Record<string, number> = {
+  FULL_BODY: 1,
+  A: 1,
+  AB: 2,
+  ABC: 3,
+  ABCD: 4,
+  ABCDE: 5,
+  CUSTOM: 7,
+};
+
 function workoutDayLabel(division: string, dayIndex: number) {
   if (division === "FULL_BODY") return `Full body · Dia ${dayIndex + 1}`;
   const sector = DIVISION_DAY_LABELS[division]?.[dayIndex];
   const letter = division !== "CUSTOM" ? String.fromCharCode(65 + dayIndex) : `Dia ${dayIndex + 1}`;
   return sector ? `${letter} · ${sector}` : letter;
+}
+
+function workoutDayShortLabel(division: string, dayIndex: number) {
+  if (division === "FULL_BODY") return "Dia 1";
+  if (division === "CUSTOM") return `Dia ${dayIndex + 1}`;
+  return `Treino ${String.fromCharCode(65 + dayIndex)}`;
+}
+
+function divisionDayIndexes(division: string) {
+  return Array.from({ length: DIVISION_DAY_COUNTS[division] ?? 7 }, (_, index) => index);
 }
 
 function normalizedSearch(value: string) {
@@ -84,18 +104,22 @@ function savedFocus(inputs: unknown) {
 
 function SortableDraftExercise({
   item,
-  index,
+  division,
+  dayIndexes,
   positionInDay,
   totalInDay,
   update,
+  moveToDay,
   remove,
   move,
 }: {
   item: DraftExercise;
-  index: number;
+  division: string;
+  dayIndexes: number[];
   positionInDay: number;
   totalInDay: number;
-  update: (index: number, update: Partial<DraftExercise>) => void;
+  update: (draftId: string, update: Partial<DraftExercise>) => void;
+  moveToDay: (draftId: string, dayIndex: number) => void;
   remove: (draftId: string) => void;
   move: (draftId: string, direction: -1 | 1) => void;
 }) {
@@ -131,10 +155,10 @@ function SortableDraftExercise({
         <span className="col-span-2 text-center text-[0.7rem] text-[#657168] sm:text-right">Arraste pela alça ou use os botões</span>
       </div>
       <div className="mt-3 grid min-w-0 grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-        <div className="field"><label htmlFor={`day-${item.draftId}`}>Dia</label><input id={`day-${item.draftId}`} type="number" min="1" max="7" value={item.dayIndex + 1} onChange={(event) => update(index, { dayIndex: Number(event.target.value) - 1 })} /></div>
-        <div className="field"><label htmlFor={`sets-${item.draftId}`}>Séries</label><input id={`sets-${item.draftId}`} type="number" min="1" max="12" value={item.targetSets} onChange={(event) => update(index, { targetSets: Number(event.target.value) })} /></div>
-        <div className="field"><label htmlFor={`reps-${item.draftId}`}>Repetições</label><input id={`reps-${item.draftId}`} value={item.targetReps} maxLength={40} onChange={(event) => update(index, { targetReps: event.target.value })} /></div>
-        <div className="field"><label htmlFor={`rest-${item.draftId}`}>Descanso (s)</label><input id={`rest-${item.draftId}`} type="number" min="15" max="900" step="5" value={item.restSeconds} onChange={(event) => update(index, { restSeconds: Number(event.target.value) })} /></div>
+        <div className="field col-span-2 lg:col-span-1"><label htmlFor={`day-${item.draftId}`}>Treino de destino</label><select data-testid={`exercise-day-${item.draftId}`} id={`day-${item.draftId}`} value={item.dayIndex} onChange={(event) => moveToDay(item.draftId, Number(event.target.value))}>{dayIndexes.map((dayIndex) => <option key={dayIndex} value={dayIndex}>{workoutDayLabel(division, dayIndex)}</option>)}</select></div>
+        <div className="field"><label htmlFor={`sets-${item.draftId}`}>Séries</label><input id={`sets-${item.draftId}`} type="number" inputMode="numeric" min="1" max="12" value={item.targetSets} onChange={(event) => update(item.draftId, { targetSets: Number(event.target.value) })} /></div>
+        <div className="field"><label htmlFor={`reps-${item.draftId}`}>Repetições</label><input id={`reps-${item.draftId}`} value={item.targetReps} maxLength={40} onChange={(event) => update(item.draftId, { targetReps: event.target.value })} /></div>
+        <div className="field col-span-2 lg:col-span-1"><label htmlFor={`rest-${item.draftId}`}>Descanso (segundos)</label><input id={`rest-${item.draftId}`} type="number" inputMode="numeric" min="15" max="900" step="5" value={item.restSeconds} onChange={(event) => update(item.draftId, { restSeconds: Number(event.target.value) })} /></div>
       </div>
     </div>
   );
@@ -153,6 +177,7 @@ export function WorkoutPlanner({
 }) {
   const router = useRouter();
   const workoutImportRef = useRef<HTMLInputElement>(null);
+  const builderDialogRef = useRef<HTMLDialogElement>(null);
   const dragSensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 6 } }),
@@ -169,6 +194,8 @@ export function WorkoutPlanner({
   const [error, setError] = useState("");
   const [generation, setGeneration] = useState<{ ruleVersion: string; division: GenerationDivision; focus: WorkoutFocus; warnings: string[]; dayLabels: string[] } | null>(null);
   const [exerciseQuery, setExerciseQuery] = useState("");
+  const [addToDayIndex, setAddToDayIndex] = useState(0);
+  const [activeDraftDay, setActiveDraftDay] = useState(0);
   const [importReview, setImportReview] = useState<{ filename: string; dayLabels: string[] } | null>(null);
   const activePlans = plans.filter((plan) => plan.active);
   const archivedPlans = plans.filter((plan) => !plan.active);
@@ -177,7 +204,14 @@ export function WorkoutPlanner({
     if (query.length < 2) return [];
     return exercises.filter((exercise) => normalizedSearch(`${exercise.name} ${exercise.muscleGroup} ${exercise.equipment ?? ""}`).includes(query)).slice(0, 12);
   }, [exerciseQuery, exercises]);
-  const draftDays = useMemo(() => [...new Set(draft.map((item) => item.dayIndex))].sort((left, right) => left - right), [draft]);
+  const dayIndexes = useMemo(() => divisionDayIndexes(division), [division]);
+  const draftDayCounts = useMemo(() => new Map(dayIndexes.map((dayIndex) => [dayIndex, draft.filter((item) => item.dayIndex === dayIndex).length])), [dayIndexes, draft]);
+
+  useEffect(() => {
+    const dialog = builderDialogRef.current;
+    if (showBuilder && dialog && !dialog.open) dialog.showModal();
+    if (!showBuilder && dialog?.open) dialog.close();
+  }, [showBuilder]);
 
   function addExercise(exercise: CatalogExercise) {
     setDraft((current) => [
@@ -186,16 +220,39 @@ export function WorkoutPlanner({
         draftId: createDraftId(),
         exerciseId: exercise.id,
         name: exercise.name,
-        dayIndex: 0,
+        dayIndex: addToDayIndex,
         targetSets: 3,
         targetReps: "8–12",
         restSeconds: 75,
       },
     ]);
+    setActiveDraftDay(addToDayIndex);
   }
 
-  function updateDraft(index: number, update: Partial<DraftExercise>) {
-    setDraft((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...update } : item));
+  function updateDraft(draftId: string, update: Partial<DraftExercise>) {
+    setDraft((current) => current.map((item) => item.draftId === draftId ? { ...item, ...update } : item));
+  }
+
+  function moveDraftToDay(draftId: string, dayIndex: number) {
+    setDraft((current) => {
+      const item = current.find((candidate) => candidate.draftId === draftId);
+      if (!item || item.dayIndex === dayIndex) return current;
+      const withoutItem = current.filter((candidate) => candidate.draftId !== draftId);
+      const lastTargetIndex = withoutItem.reduce((last, candidate, index) => candidate.dayIndex === dayIndex ? index : last, -1);
+      const moved = { ...item, dayIndex };
+      if (lastTargetIndex < 0) return [...withoutItem, moved];
+      return [...withoutItem.slice(0, lastTargetIndex + 1), moved, ...withoutItem.slice(lastTargetIndex + 1)];
+    });
+    setActiveDraftDay(dayIndex);
+    setAddToDayIndex(dayIndex);
+  }
+
+  function changeDivision(nextDivision: string) {
+    const lastDayIndex = (DIVISION_DAY_COUNTS[nextDivision] ?? 7) - 1;
+    setDivision(nextDivision);
+    setDraft((current) => current.map((item) => item.dayIndex > lastDayIndex ? { ...item, dayIndex: lastDayIndex } : item));
+    setAddToDayIndex((current) => Math.min(current, lastDayIndex));
+    setActiveDraftDay((current) => Math.min(current, lastDayIndex));
   }
 
   function removeDraft(draftId: string) {
@@ -245,6 +302,8 @@ export function WorkoutPlanner({
     setGeneration(null);
     setImportReview(null);
     setExerciseQuery("");
+    setAddToDayIndex(0);
+    setActiveDraftDay(0);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -316,6 +375,8 @@ export function WorkoutPlanner({
       setGeneration({ ruleVersion: result.proposal.ruleVersion, division: result.proposal.division, focus: result.proposal.focus, warnings: result.proposal.warnings, dayLabels: result.proposal.dayLabels });
       setImportReview(null);
       setExerciseQuery("");
+      setAddToDayIndex(0);
+      setActiveDraftDay(0);
       setShowBuilder(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -353,6 +414,8 @@ export function WorkoutPlanner({
       setGeneration(null);
       setExerciseQuery("");
       setImportReview({ filename: file.name, dayLabels: result.proposal.dayLabels });
+      setAddToDayIndex(0);
+      setActiveDraftDay(0);
       setShowBuilder(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {
@@ -412,8 +475,9 @@ export function WorkoutPlanner({
   function renderActivePlans() {
     return (
       <section data-testid="workout-plans-section" className="mt-10" aria-labelledby="plans-title">
-        <p className="eyebrow">Planos ativos</p>
-        <h2 id="plans-title" className="mt-2 text-2xl font-black">Escolha o treino de hoje</h2>
+        <p className="eyebrow">Seus planos</p>
+        <h2 id="plans-title" className="mt-2 text-2xl font-black">Qual treino você vai fazer?</h2>
+        <p className="mt-2 text-sm leading-6 text-[#657168]">Toque em um dia para começar ou edite o plano para trocar exercícios e ajustar séries.</p>
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
           {activePlans.map((plan) => {
             const version = plan.versions[0];
@@ -430,12 +494,13 @@ export function WorkoutPlanner({
                     <p className="mt-1 text-sm text-[#657168]">Versão {version?.version ?? 1} · {days.length} {days.length === 1 ? "dia" : "dias"}</p>
                     {version?.generatedByRuleVersion && <p className="mt-2 break-words text-xs font-bold text-[#725d00]">Sugestão gerada pela regra {version.generatedByRuleVersion} e confirmada após revisão.</p>}
                   </div>
-                  <button className="shrink-0 rounded-full border border-[#dfe5dc] px-3 py-2 text-xs font-bold" onClick={() => editPlan(plan)}>Editar</button>
+                  <button className="min-h-11 shrink-0 rounded-full border border-[#dfe5dc] bg-white px-4 py-2 text-xs font-bold text-[#166534]" onClick={() => editPlan(plan)}>Editar</button>
                 </div>
                 <div className="mt-5 grid min-w-0 gap-2">
                   {days.map((dayIndex) => {
                     const count = version?.exercises.filter((item) => item.dayIndex === dayIndex).length ?? 0;
-                    return <button key={dayIndex} data-testid={`workout-day-${dayIndex}`} className="button-secondary w-full min-w-0 gap-2 whitespace-normal text-left !justify-between" disabled={pending} onClick={() => startWorkout(plan.id, dayIndex)}><span className="min-w-0 break-words">{workoutDayLabel(plan.division, dayIndex)} · {count} exercícios</span><span className="shrink-0" aria-hidden="true">→</span></button>;
+                    const dayMark = plan.division === "FULL_BODY" || plan.division === "CUSTOM" ? String(dayIndex + 1) : String.fromCharCode(65 + dayIndex);
+                    return <button key={dayIndex} data-testid={`workout-day-${dayIndex}`} className="grid min-h-16 w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border border-[#dfe5dc] bg-white p-3 text-left transition hover:border-[#9eb29d] hover:shadow-md disabled:opacity-60" disabled={pending} onClick={() => startWorkout(plan.id, dayIndex)}><span className="grid size-10 place-items-center rounded-xl bg-[#eef4e9] text-sm font-black text-[#166534]">{dayMark}</span><span className="min-w-0"><strong className="block break-words text-sm">{workoutDayLabel(plan.division, dayIndex)}</strong><small className="mt-1 block text-xs text-[#657168]">{count} {count === 1 ? "exercício" : "exercícios"}</small></span><span className="shrink-0 text-lg text-[#166534]" aria-hidden="true">→</span></button>;
                   })}
                 </div>
                 <button className="mt-4 max-w-full text-xs font-bold text-[#b42318]" disabled={pending} onClick={() => deletePlan(plan.id, plan.name)}>Excluir plano</button>
@@ -455,7 +520,7 @@ export function WorkoutPlanner({
       {activePlans.length > 0 && renderActivePlans()}
 
       <div data-testid="workout-create-options" className="mt-6 grid gap-3 sm:grid-cols-2">
-        <button className="button-primary" onClick={() => { setShowBuilder(true); setEditingId(null); setPlanName(""); setDivision("CUSTOM"); setDraft([]); setGeneration(null); setImportReview(null); setExerciseQuery(""); }}>Criar plano manual</button>
+        <button className="button-primary" onClick={() => { setShowBuilder(true); setEditingId(null); setPlanName(""); setDivision("CUSTOM"); setDraft([]); setGeneration(null); setImportReview(null); setExerciseQuery(""); setAddToDayIndex(0); setActiveDraftDay(0); setError(""); }}>Criar plano manual</button>
         <button className="button-secondary" disabled={pending} onClick={() => workoutImportRef.current?.click()}>{pending ? "Processando…" : "Importar treino em JSON"}</button>
         <input ref={workoutImportRef} className="sr-only" type="file" accept="application/json,.json" onChange={importWorkout} />
       </div>
@@ -485,93 +550,81 @@ export function WorkoutPlanner({
 }`}</pre>
       </details>
       <p className="mt-3 text-xs leading-5 text-[#657168]">Toda sugestão é uma orientação geral e precisa ser revisada por você. Restrições, dor ou condições de saúde exigem avaliação profissional.</p>
-      <p role="status" aria-live="polite" className={`mt-4 min-h-6 text-sm font-bold ${error ? "text-[#b42318]" : "text-transparent"}`}>{error || "Tudo certo"}</p>
-      {showBuilder && !generation && <div className="field mt-2 max-w-xs"><label htmlFor="plan-division">Divisão do plano</label><select id="plan-division" value={division} onChange={(event) => setDivision(event.target.value)}><option value="FULL_BODY">Full body</option><option value="A">A</option><option value="AB">AB</option><option value="ABC">ABC</option><option value="ABCD">ABCD</option><option value="ABCDE">ABCDE</option><option value="CUSTOM">Personalizada</option></select></div>}
-      {showBuilder && generation && (
-        <section data-testid="workout-generation-review" className="mt-4 min-w-0 rounded-2xl border border-[#d9e5b5] bg-[#f8fce9] p-4 sm:p-5" aria-labelledby="generation-review-title">
-          <p className="eyebrow">Sugestão gerada</p>
-          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
-            <h2 id="generation-review-title" className="mr-auto text-lg font-black sm:text-xl">Revisão obrigatória antes de ativar</h2>
-            <span className="rounded-full bg-[#166534] px-3 py-1.5 text-xs font-black text-white">{generationDivisionLabel(generation.division)} · {focusLabel(generation.focus)}</span>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2" aria-label="Dias da sugestão">
-            {generation.dayLabels.map((label, index) => {
-              const day = generation.division === "FULL_BODY" ? String(index + 1) : String.fromCharCode(65 + index);
-              return <span key={`${label}-${index}`} title={label} aria-label={`Dia ${day}: ${label}`} className="grid size-9 place-items-center rounded-full border border-[#d9e5b5] bg-white text-xs font-black text-[#166534]">{day}</span>;
-            })}
-          </div>
-        </section>
-      )}
+      {!showBuilder && <p role="status" aria-live="polite" className={`mt-4 min-h-6 text-sm font-bold ${error ? "text-[#b42318]" : "text-transparent"}`}>{error || "Tudo certo"}</p>}
 
-      {showBuilder && (
-        <section data-testid="workout-builder" className="card mt-4 min-w-0 max-w-full p-4 sm:p-7" aria-labelledby="builder-title">
-          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_2.75rem] items-start gap-3 sm:gap-4">
+      <dialog ref={builderDialogRef} className="app-dialog m-auto max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-4xl overflow-y-auto rounded-[1.75rem] border border-[#dfe5dc] bg-[#f8faf6] p-0 text-[#17201b] shadow-2xl backdrop:bg-[#07120c]/70" aria-labelledby="builder-title" onCancel={(event) => { event.preventDefault(); setShowBuilder(false); }} onClose={() => setShowBuilder(false)}>
+        {showBuilder && (
+        <section data-testid="workout-builder" className="w-full min-w-0 max-w-full overflow-x-hidden" aria-labelledby="builder-title">
+          <header className="sticky top-0 z-20 grid min-w-0 grid-cols-[minmax(0,1fr)_2.75rem] items-start gap-3 border-b border-[#dfe5dc] bg-[#f8faf6]/95 px-4 py-4 backdrop-blur-xl sm:px-7 sm:py-5">
             <div className="min-w-0">
-              <p className="eyebrow">{importReview ? "Importação JSON" : editingId ? "Nova versão" : generation ? "Sugestão gerada" : "Plano manual"}</p>
-              <h2 id="builder-title" className="mt-2 break-words text-xl font-black sm:text-2xl">Monte seus dias de treino</h2>
+              <p className="eyebrow">{importReview ? "Importação JSON" : editingId ? "Editando plano" : generation ? "Sugestão gerada" : "Novo plano"}</p>
+              <h2 id="builder-title" className="mt-1 break-words text-xl font-black sm:text-2xl">{editingId ? "Ajuste seus treinos" : "Monte seus dias de treino"}</h2>
             </div>
-            <button type="button" className="grid size-11 place-items-center rounded-full border border-[#dfe5dc] bg-white text-xl" onClick={() => setShowBuilder(false)} aria-label="Fechar">×</button>
+            <button type="button" className="grid size-11 place-items-center rounded-full border border-[#dfe5dc] bg-white text-xl" onClick={() => setShowBuilder(false)} aria-label="Fechar editor de treino">×</button>
+          </header>
+
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 p-4 pb-0 sm:p-7 sm:pb-0">
+            {generation && (
+              <section data-testid="workout-generation-review" className="min-w-0 rounded-2xl border border-[#d9e5b5] bg-[#f8fce9] p-4 sm:p-5" aria-labelledby="generation-review-title">
+                <p className="eyebrow">Sugestão gerada</p>
+                <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
+                  <h3 id="generation-review-title" className="mr-auto text-lg font-black sm:text-xl">Revisão obrigatória antes de ativar</h3>
+                  <span className="rounded-full bg-[#166534] px-3 py-1.5 text-xs font-black text-white">{generationDivisionLabel(generation.division)} · {focusLabel(generation.focus)}</span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2" aria-label="Dias da sugestão">{generation.dayLabels.map((label, index) => { const day = generation.division === "FULL_BODY" ? String(index + 1) : String.fromCharCode(65 + index); return <span key={`${label}-${index}`} title={label} aria-label={`Dia ${day}: ${label}`} className="grid size-9 place-items-center rounded-full border border-[#d9e5b5] bg-white text-xs font-black text-[#166534]">{day}</span>; })}</div>
+              </section>
+            )}
+
+            {importReview && (
+              <section className="rounded-2xl border border-[#d9e5b5] bg-[#f8fce9] p-4" aria-label="Revisão da importação">
+                <p className="font-black text-[#166534]">Arquivo validado: {importReview.filename}</p>
+                <p className="mt-2 text-sm leading-6 text-[#657168]">Revise exercícios, treinos, séries, repetições e descansos antes de salvar.</p>
+              </section>
+            )}
           </div>
-      
-          {importReview && (
-            <section className="mt-5 rounded-2xl border border-[#d9e5b5] bg-[#f8fce9] p-4" aria-label="Revisão da importação">
-              <p className="font-black text-[#166534]">Arquivo validado: {importReview.filename}</p>
-              <p className="mt-2 text-sm leading-6 text-[#657168]">Revise todos os exercícios, dias, séries, repetições e descansos. O plano só será criado quando você tocar em “Salvar plano”.</p>
-              <div className="mt-3 flex flex-wrap gap-2">{importReview.dayLabels.map((label, index) => <span key={`${label}-${index}`} className="rounded-full bg-white px-3 py-2 text-xs font-black">{index + 1} · {label}</span>)}</div>
-            </section>
-          )}
-      
-          <form onSubmit={submitPlan} className="mt-6 grid gap-5">
-            <div className="field">
-              <label htmlFor="plan-name">Nome do plano</label>
-              <input id="plan-name" value={planName} onChange={(event) => setPlanName(event.target.value)} minLength={2} maxLength={120} required placeholder="Ex.: Treino da semana" />
+
+          <form onSubmit={submitPlan} className="grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-6 p-4 sm:p-7">
+            <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
+              <div className="field"><label htmlFor="plan-name">Nome do plano</label><input id="plan-name" value={planName} onChange={(event) => setPlanName(event.target.value)} minLength={2} maxLength={120} required placeholder="Ex.: Treino da semana" /></div>
+              <div className="field"><label htmlFor="plan-division">Divisão do plano</label><select id="plan-division" value={division} disabled={Boolean(generation)} onChange={(event) => changeDivision(event.target.value)}><option value="FULL_BODY">Full body</option><option value="A">A · Um treino</option><option value="AB">AB · Dois treinos</option><option value="ABC">ABC · Três treinos</option><option value="ABCD">ABCD · Quatro treinos</option><option value="ABCDE">ABCDE · Cinco treinos</option><option value="CUSTOM">Personalizada · Até 7 dias</option></select></div>
             </div>
-      
-            <div>
-              <div className="field">
-                <label htmlFor="exercise-search">Pesquisar exercício</label>
-                <input id="exercise-search" type="search" value={exerciseQuery} onChange={(event) => setExerciseQuery(event.target.value)} placeholder="Ex.: supino, costas, halteres…" autoComplete="off" />
+
+            <section className="rounded-2xl border border-[#cfdacb] bg-[#eef4e9] p-3 sm:p-5" aria-labelledby="add-exercise-title">
+              <div className="mb-4"><h3 id="add-exercise-title" className="font-black">Adicionar exercício</h3><p className="mt-1 text-xs leading-5 text-[#52604e]">Escolha primeiro o treino de destino. O exercício já entra no lugar certo.</p></div>
+              <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)]">
+                <div className="field"><label htmlFor="add-exercise-day">Adicionar ao</label><select id="add-exercise-day" value={addToDayIndex} onChange={(event) => { const dayIndex = Number(event.target.value); setAddToDayIndex(dayIndex); setActiveDraftDay(dayIndex); }}>{dayIndexes.map((dayIndex) => <option key={dayIndex} value={dayIndex}>{workoutDayLabel(division, dayIndex)}</option>)}</select></div>
+                <div className="field"><label htmlFor="exercise-search">Pesquisar no catálogo</label><input id="exercise-search" type="search" value={exerciseQuery} onChange={(event) => setExerciseQuery(event.target.value)} placeholder="Ex.: cadeira extensora" autoComplete="off" /></div>
               </div>
-              {exerciseQuery.trim().length < 2 && <p className="mt-2 text-xs leading-5 text-[#657168]">Digite pelo menos 2 caracteres para procurar por nome, grupo muscular ou equipamento.</p>}
+              {exerciseQuery.trim().length < 2 && <p className="mt-2 text-xs leading-5 text-[#657168]">Busque por nome, grupo muscular ou equipamento.</p>}
               {exerciseQuery.trim().length >= 2 && (
-                <div className="mt-3 grid gap-2" aria-live="polite">
-                  {filteredExercises.map((exercise) => (
-                    <button key={exercise.id} type="button" className="flex min-h-12 min-w-0 max-w-full items-center justify-between gap-3 rounded-2xl border border-[#dfe5dc] bg-white px-4 py-3 text-left hover:border-[#166534]" onClick={() => addExercise(exercise)}>
-                      <span className="min-w-0"><strong className="block break-words">{exercise.name}</strong><small className="mt-1 block break-words text-[#657168]">{exercise.muscleGroup}{exercise.equipment ? ` · ${exercise.equipment}` : ""}</small></span>
-                      <span className="shrink-0 text-xl font-black text-[#166534]" aria-hidden="true">+</span>
-                    </button>
-                  ))}
-                  {filteredExercises.length === 0 && <p className="rounded-2xl bg-[#f4f6f1] p-4 text-sm text-[#657168]">Nenhum exercício encontrado. Tente outro termo.</p>}
+                <div className="mt-3 grid max-h-72 gap-2 overflow-y-auto pr-1" aria-live="polite">
+                  {filteredExercises.map((exercise) => <button key={exercise.id} type="button" className="flex min-h-14 min-w-0 max-w-full items-center justify-between gap-3 rounded-2xl border border-[#dfe5dc] bg-white px-4 py-3 text-left hover:border-[#166534]" onClick={() => addExercise(exercise)}><span className="min-w-0"><strong className="block break-words">{exercise.name}</strong><small className="mt-1 block break-words text-[#657168]">{exercise.muscleGroup}{exercise.equipment ? ` · ${exercise.equipment}` : ""}</small></span><span className="shrink-0 rounded-full bg-[#eef4e9] px-3 py-2 text-xs font-black text-[#166534]">Adicionar</span></button>)}
+                  {filteredExercises.length === 0 && <p className="rounded-2xl bg-white p-4 text-sm text-[#657168]">Nenhum exercício encontrado. Tente outro termo.</p>}
                 </div>
               )}
-            </div>
-      
-            {draft.length > 0 && (
-              <div className="grid gap-3">
-                <div><p className="text-sm font-black">Seu plano · {draft.length} {draft.length === 1 ? "exercício" : "exercícios"}</p><p className="mt-1 text-xs leading-5 text-[#657168]">Segure a alça ⠿ e arraste para ordenar dentro do dia. No celular, você também pode usar “Subir” e “Descer”.</p></div>
-                <DndContext sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={finishDrag}>
-                  {draftDays.map((dayIndex) => {
-                    const dayItems = draft.filter((item) => item.dayIndex === dayIndex);
-                    return (
-                      <section key={dayIndex} data-testid={`workout-draft-day-${dayIndex}`} className="grid min-w-0 max-w-full gap-3 rounded-2xl bg-[#f4f6f1] p-2 sm:rounded-3xl sm:p-4" aria-labelledby={`draft-day-${dayIndex}`}>
-                        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 px-1"><h3 id={`draft-day-${dayIndex}`} className="min-w-0 break-words font-black leading-5">{workoutDayLabel(division, dayIndex)}</h3><span className="whitespace-nowrap text-xs font-bold text-[#657168]">{dayItems.length} {dayItems.length === 1 ? "exercício" : "exercícios"}</span></div>
-                        <SortableContext items={dayItems.map((item) => item.draftId)} strategy={verticalListSortingStrategy}>
-                          {dayItems.map((item, positionInDay) => {
-                            const index = draft.findIndex((candidate) => candidate.draftId === item.draftId);
-                            return <SortableDraftExercise key={item.draftId} item={item} index={index} positionInDay={positionInDay} totalInDay={dayItems.length} update={updateDraft} remove={removeDraft} move={moveDraftWithinDay} />;
-                          })}
-                        </SortableContext>
-                      </section>
-                    );
-                  })}
-                </DndContext>
-              </div>
-            )}
-      
-            <button className="button-primary" disabled={pending}>{pending ? "Salvando…" : editingId ? "Criar nova versão" : "Salvar plano"}</button>
+            </section>
+
+            <section aria-labelledby="plan-days-title">
+              <div className="flex items-end justify-between gap-3"><div><h3 id="plan-days-title" className="font-black">Treinos do plano</h3><p className="mt-1 text-xs text-[#657168]">{draft.length} {draft.length === 1 ? "exercício" : "exercícios"} no total</p></div><p className="hidden text-xs text-[#657168] sm:block">Arraste ou use Subir/Descer para ordenar</p></div>
+              <div className="mt-4 flex flex-wrap gap-2 pb-2" role="tablist" aria-label="Treinos do plano">{dayIndexes.map((dayIndex) => { const dayMark = division === "FULL_BODY" || division === "CUSTOM" ? String(dayIndex + 1) : String.fromCharCode(65 + dayIndex); return <button key={dayIndex} type="button" role="tab" aria-selected={activeDraftDay === dayIndex} data-testid={`draft-day-tab-${dayIndex}`} className={`min-h-12 rounded-full border px-3 text-left text-sm font-black sm:px-4 ${activeDraftDay === dayIndex ? "border-[#166534] bg-[#166534] text-white" : "border-[#dfe5dc] bg-white text-[#334039]"}`} onClick={() => { setActiveDraftDay(dayIndex); setAddToDayIndex(dayIndex); }}><span className="sm:hidden">{dayMark}</span><span className="hidden sm:inline">{workoutDayShortLabel(division, dayIndex)}</span><span className={`ml-2 rounded-full px-2 py-1 text-[.68rem] ${activeDraftDay === dayIndex ? "bg-white/15" : "bg-[#eef4e9] text-[#166534]"}`}>{draftDayCounts.get(dayIndex) ?? 0}</span></button>; })}</div>
+
+              {dayIndexes.map((dayIndex) => {
+                if (dayIndex !== activeDraftDay) return null;
+                const dayItems = draft.filter((item) => item.dayIndex === dayIndex);
+                return <DndContext key={dayIndex} sensors={dragSensors} collisionDetection={closestCenter} onDragEnd={finishDrag}><section data-testid={`workout-draft-day-${dayIndex}`} className="mt-2 grid min-w-0 max-w-full gap-3 rounded-2xl bg-[#f4f6f1] p-2 sm:rounded-3xl sm:p-4" aria-labelledby={`draft-day-${dayIndex}`}><div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 px-1"><div className="min-w-0"><h4 id={`draft-day-${dayIndex}`} className="break-words font-black leading-5">{workoutDayLabel(division, dayIndex)}</h4><p className="mt-1 text-xs text-[#657168]">{dayItems.length ? `${dayItems.length} ${dayItems.length === 1 ? "exercício" : "exercícios"}` : "Nenhum exercício neste treino"}</p></div><button type="button" className="rounded-full border border-[#cbd4ca] bg-white px-3 py-2 text-xs font-black text-[#166534]" onClick={() => document.getElementById("exercise-search")?.focus()}>+ Adicionar</button></div>{dayItems.length === 0 && <div className="rounded-2xl border border-dashed border-[#b8c5b6] bg-white/60 p-5 text-center text-sm text-[#657168]">Pesquise um exercício acima para adicioná-lo diretamente aqui.</div>}<SortableContext items={dayItems.map((item) => item.draftId)} strategy={verticalListSortingStrategy}>{dayItems.map((item, positionInDay) => <SortableDraftExercise key={item.draftId} item={item} division={division} dayIndexes={dayIndexes} positionInDay={positionInDay} totalInDay={dayItems.length} update={updateDraft} moveToDay={moveDraftToDay} remove={removeDraft} move={moveDraftWithinDay} />)}</SortableContext></section></DndContext>;
+              })}
+            </section>
+
+            {error && <p role="alert" className="rounded-2xl border border-[#f0d5d2] bg-[#fff7f6] p-4 text-sm font-bold text-[#b42318]">{error}</p>}
+
+            <footer className="sticky bottom-0 z-20 -mx-4 -mb-4 grid gap-2 border-t border-[#dfe5dc] bg-[#f8faf6]/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl sm:-mx-7 sm:-mb-7 sm:grid-cols-[auto_minmax(15rem,1fr)] sm:px-7 sm:pb-5">
+              <button type="button" className="button-secondary sm:order-first" onClick={() => setShowBuilder(false)}>Cancelar</button>
+              <button className="button-primary sm:order-last" disabled={pending}>{pending ? "Salvando…" : editingId ? "Salvar nova versão" : "Salvar plano"}</button>
+            </footer>
           </form>
         </section>
-      )}
+        )}
+      </dialog>
 
       {activePlans.length === 0 && renderActivePlans()}
 
