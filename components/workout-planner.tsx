@@ -80,6 +80,10 @@ function workoutDayShortLabel(division: string, dayIndex: number) {
   return `Treino ${String.fromCharCode(65 + dayIndex)}`;
 }
 
+function workoutDayMark(division: string, dayIndex: number) {
+  return division === "FULL_BODY" || division === "CUSTOM" ? String(dayIndex + 1) : String.fromCharCode(65 + dayIndex);
+}
+
 function divisionDayIndexes(division: string) {
   return Array.from({ length: DIVISION_DAY_COUNTS[division] ?? 7 }, (_, index) => index);
 }
@@ -155,7 +159,7 @@ function SortableDraftExercise({
         <span className="col-span-2 text-center text-[0.7rem] text-[#657168] sm:text-right">Arraste pela alça ou use os botões</span>
       </div>
       <div className="mt-3 grid min-w-0 grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-        <div className="field col-span-2 lg:col-span-1"><label htmlFor={`day-${item.draftId}`}>Treino de destino</label><select data-testid={`exercise-day-${item.draftId}`} id={`day-${item.draftId}`} value={item.dayIndex} onChange={(event) => moveToDay(item.draftId, Number(event.target.value))}>{dayIndexes.map((dayIndex) => <option key={dayIndex} value={dayIndex}>{workoutDayLabel(division, dayIndex)}</option>)}</select></div>
+        <fieldset className="field col-span-2 lg:col-span-4"><legend>Mover para outro treino</legend><div className="flex flex-wrap gap-2">{dayIndexes.map((dayIndex) => { const selected = dayIndex === item.dayIndex; return <button key={dayIndex} type="button" aria-pressed={selected} aria-label={selected ? `${item.name} está no ${workoutDayShortLabel(division, dayIndex)}` : `Mover ${item.name} para ${workoutDayShortLabel(division, dayIndex)}`} data-testid={`move-${item.draftId}-to-${dayIndex}`} className={`grid min-h-11 min-w-11 place-items-center rounded-xl border px-3 text-sm font-black ${selected ? "border-[#166534] bg-[#166534] text-white" : "border-[#cbd4ca] bg-white text-[#166534]"}`} disabled={selected} onClick={() => moveToDay(item.draftId, dayIndex)}>{selected ? "✓ " : ""}{workoutDayMark(division, dayIndex)}</button>; })}</div></fieldset>
         <div className="field"><label htmlFor={`sets-${item.draftId}`}>Séries</label><input id={`sets-${item.draftId}`} type="number" inputMode="numeric" min="1" max="12" value={item.targetSets} onChange={(event) => update(item.draftId, { targetSets: Number(event.target.value) })} /></div>
         <div className="field"><label htmlFor={`reps-${item.draftId}`}>Repetições</label><input id={`reps-${item.draftId}`} value={item.targetReps} maxLength={40} onChange={(event) => update(item.draftId, { targetReps: event.target.value })} /></div>
         <div className="field col-span-2 lg:col-span-1"><label htmlFor={`rest-${item.draftId}`}>Descanso (segundos)</label><input id={`rest-${item.draftId}`} type="number" inputMode="numeric" min="15" max="900" step="5" value={item.restSeconds} onChange={(event) => update(item.draftId, { restSeconds: Number(event.target.value) })} /></div>
@@ -194,8 +198,8 @@ export function WorkoutPlanner({
   const [error, setError] = useState("");
   const [generation, setGeneration] = useState<{ ruleVersion: string; division: GenerationDivision; focus: WorkoutFocus; warnings: string[]; dayLabels: string[] } | null>(null);
   const [exerciseQuery, setExerciseQuery] = useState("");
-  const [addToDayIndex, setAddToDayIndex] = useState(0);
   const [activeDraftDay, setActiveDraftDay] = useState(0);
+  const [builderNotice, setBuilderNotice] = useState("");
   const [importReview, setImportReview] = useState<{ filename: string; dayLabels: string[] } | null>(null);
   const activePlans = plans.filter((plan) => plan.active);
   const archivedPlans = plans.filter((plan) => !plan.active);
@@ -220,13 +224,13 @@ export function WorkoutPlanner({
         draftId: createDraftId(),
         exerciseId: exercise.id,
         name: exercise.name,
-        dayIndex: addToDayIndex,
+        dayIndex: activeDraftDay,
         targetSets: 3,
         targetReps: "8–12",
         restSeconds: 75,
       },
     ]);
-    setActiveDraftDay(addToDayIndex);
+    setBuilderNotice(`${exercise.name} adicionado ao ${workoutDayShortLabel(division, activeDraftDay)}.`);
   }
 
   function updateDraft(draftId: string, update: Partial<DraftExercise>) {
@@ -234,6 +238,7 @@ export function WorkoutPlanner({
   }
 
   function moveDraftToDay(draftId: string, dayIndex: number) {
+    const exerciseName = draft.find((candidate) => candidate.draftId === draftId)?.name ?? "Exercício";
     setDraft((current) => {
       const item = current.find((candidate) => candidate.draftId === draftId);
       if (!item || item.dayIndex === dayIndex) return current;
@@ -244,14 +249,13 @@ export function WorkoutPlanner({
       return [...withoutItem.slice(0, lastTargetIndex + 1), moved, ...withoutItem.slice(lastTargetIndex + 1)];
     });
     setActiveDraftDay(dayIndex);
-    setAddToDayIndex(dayIndex);
+    setBuilderNotice(`${exerciseName} movido para ${workoutDayShortLabel(division, dayIndex)}.`);
   }
 
   function changeDivision(nextDivision: string) {
     const lastDayIndex = (DIVISION_DAY_COUNTS[nextDivision] ?? 7) - 1;
     setDivision(nextDivision);
     setDraft((current) => current.map((item) => item.dayIndex > lastDayIndex ? { ...item, dayIndex: lastDayIndex } : item));
-    setAddToDayIndex((current) => Math.min(current, lastDayIndex));
     setActiveDraftDay((current) => Math.min(current, lastDayIndex));
   }
 
@@ -302,8 +306,8 @@ export function WorkoutPlanner({
     setGeneration(null);
     setImportReview(null);
     setExerciseQuery("");
-    setAddToDayIndex(0);
     setActiveDraftDay(0);
+    setBuilderNotice("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -375,8 +379,8 @@ export function WorkoutPlanner({
       setGeneration({ ruleVersion: result.proposal.ruleVersion, division: result.proposal.division, focus: result.proposal.focus, warnings: result.proposal.warnings, dayLabels: result.proposal.dayLabels });
       setImportReview(null);
       setExerciseQuery("");
-      setAddToDayIndex(0);
       setActiveDraftDay(0);
+      setBuilderNotice("");
       setShowBuilder(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -414,8 +418,8 @@ export function WorkoutPlanner({
       setGeneration(null);
       setExerciseQuery("");
       setImportReview({ filename: file.name, dayLabels: result.proposal.dayLabels });
-      setAddToDayIndex(0);
       setActiveDraftDay(0);
+      setBuilderNotice("");
       setShowBuilder(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {
@@ -520,7 +524,7 @@ export function WorkoutPlanner({
       {activePlans.length > 0 && renderActivePlans()}
 
       <div data-testid="workout-create-options" className="mt-6 grid gap-3 sm:grid-cols-2">
-        <button className="button-primary" onClick={() => { setShowBuilder(true); setEditingId(null); setPlanName(""); setDivision("CUSTOM"); setDraft([]); setGeneration(null); setImportReview(null); setExerciseQuery(""); setAddToDayIndex(0); setActiveDraftDay(0); setError(""); }}>Criar plano manual</button>
+        <button className="button-primary" onClick={() => { setShowBuilder(true); setEditingId(null); setPlanName(""); setDivision("CUSTOM"); setDraft([]); setGeneration(null); setImportReview(null); setExerciseQuery(""); setActiveDraftDay(0); setBuilderNotice(""); setError(""); }}>Criar plano manual</button>
         <button className="button-secondary" disabled={pending} onClick={() => workoutImportRef.current?.click()}>{pending ? "Processando…" : "Importar treino em JSON"}</button>
         <input ref={workoutImportRef} className="sr-only" type="file" accept="application/json,.json" onChange={importWorkout} />
       </div>
@@ -591,14 +595,12 @@ export function WorkoutPlanner({
 
             <section className="rounded-2xl border border-[#cfdacb] bg-[#eef4e9] p-3 sm:p-5" aria-labelledby="add-exercise-title">
               <div className="mb-4"><h3 id="add-exercise-title" className="font-black">Adicionar exercício</h3><p className="mt-1 text-xs leading-5 text-[#52604e]">Escolha primeiro o treino de destino. O exercício já entra no lugar certo.</p></div>
-              <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)]">
-                <div className="field"><label htmlFor="add-exercise-day">Adicionar ao</label><select id="add-exercise-day" value={addToDayIndex} onChange={(event) => { const dayIndex = Number(event.target.value); setAddToDayIndex(dayIndex); setActiveDraftDay(dayIndex); }}>{dayIndexes.map((dayIndex) => <option key={dayIndex} value={dayIndex}>{workoutDayLabel(division, dayIndex)}</option>)}</select></div>
-                <div className="field"><label htmlFor="exercise-search">Pesquisar no catálogo</label><input id="exercise-search" type="search" value={exerciseQuery} onChange={(event) => setExerciseQuery(event.target.value)} placeholder="Ex.: cadeira extensora" autoComplete="off" /></div>
-              </div>
+              <fieldset className="field"><legend>Adicionar no treino</legend><div className="flex flex-wrap gap-2">{dayIndexes.map((dayIndex) => { const selected = dayIndex === activeDraftDay; return <button key={dayIndex} type="button" aria-pressed={selected} aria-label={`Adicionar no ${workoutDayShortLabel(division, dayIndex)}`} className={`grid min-h-11 min-w-11 place-items-center rounded-xl border px-3 text-sm font-black ${selected ? "border-[#166534] bg-[#166534] text-white" : "border-[#b7c5b4] bg-white text-[#166534]"}`} onClick={() => { setActiveDraftDay(dayIndex); setBuilderNotice(`Os próximos exercícios serão adicionados ao ${workoutDayShortLabel(division, dayIndex)}.`); }}>{selected ? "✓ " : ""}{workoutDayMark(division, dayIndex)}</button>; })}</div></fieldset>
+              <div className="field mt-3"><label htmlFor="exercise-search">Pesquisar no catálogo</label><input id="exercise-search" type="search" value={exerciseQuery} onChange={(event) => setExerciseQuery(event.target.value)} placeholder="Ex.: cadeira extensora" autoComplete="off" /></div>
               {exerciseQuery.trim().length < 2 && <p className="mt-2 text-xs leading-5 text-[#657168]">Busque por nome, grupo muscular ou equipamento.</p>}
               {exerciseQuery.trim().length >= 2 && (
                 <div className="mt-3 grid max-h-72 gap-2 overflow-y-auto pr-1" aria-live="polite">
-                  {filteredExercises.map((exercise) => <button key={exercise.id} type="button" className="flex min-h-14 min-w-0 max-w-full items-center justify-between gap-3 rounded-2xl border border-[#dfe5dc] bg-white px-4 py-3 text-left hover:border-[#166534]" onClick={() => addExercise(exercise)}><span className="min-w-0"><strong className="block break-words">{exercise.name}</strong><small className="mt-1 block break-words text-[#657168]">{exercise.muscleGroup}{exercise.equipment ? ` · ${exercise.equipment}` : ""}</small></span><span className="shrink-0 rounded-full bg-[#eef4e9] px-3 py-2 text-xs font-black text-[#166534]">Adicionar</span></button>)}
+                  {filteredExercises.map((exercise) => <button key={exercise.id} type="button" className="flex min-h-14 min-w-0 max-w-full items-center justify-between gap-3 rounded-2xl border border-[#dfe5dc] bg-white px-4 py-3 text-left hover:border-[#166534]" aria-label={`Adicionar ${exercise.name} ao ${workoutDayShortLabel(division, activeDraftDay)}`} onClick={() => addExercise(exercise)}><span className="min-w-0"><strong className="block break-words">{exercise.name}</strong><small className="mt-1 block break-words text-[#657168]">{exercise.muscleGroup}{exercise.equipment ? ` · ${exercise.equipment}` : ""}</small></span><span className="shrink-0 rounded-full bg-[#eef4e9] px-3 py-2 text-xs font-black text-[#166534]">Adicionar ao {workoutDayMark(division, activeDraftDay)}</span></button>)}
                   {filteredExercises.length === 0 && <p className="rounded-2xl bg-white p-4 text-sm text-[#657168]">Nenhum exercício encontrado. Tente outro termo.</p>}
                 </div>
               )}
@@ -606,7 +608,8 @@ export function WorkoutPlanner({
 
             <section aria-labelledby="plan-days-title">
               <div className="flex items-end justify-between gap-3"><div><h3 id="plan-days-title" className="font-black">Treinos do plano</h3><p className="mt-1 text-xs text-[#657168]">{draft.length} {draft.length === 1 ? "exercício" : "exercícios"} no total</p></div><p className="hidden text-xs text-[#657168] sm:block">Arraste ou use Subir/Descer para ordenar</p></div>
-              <div className="mt-4 flex flex-wrap gap-2 pb-2" role="tablist" aria-label="Treinos do plano">{dayIndexes.map((dayIndex) => { const dayMark = division === "FULL_BODY" || division === "CUSTOM" ? String(dayIndex + 1) : String.fromCharCode(65 + dayIndex); return <button key={dayIndex} type="button" role="tab" aria-selected={activeDraftDay === dayIndex} data-testid={`draft-day-tab-${dayIndex}`} className={`min-h-12 rounded-full border px-3 text-left text-sm font-black sm:px-4 ${activeDraftDay === dayIndex ? "border-[#166534] bg-[#166534] text-white" : "border-[#dfe5dc] bg-white text-[#334039]"}`} onClick={() => { setActiveDraftDay(dayIndex); setAddToDayIndex(dayIndex); }}><span className="sm:hidden">{dayMark}</span><span className="hidden sm:inline">{workoutDayShortLabel(division, dayIndex)}</span><span className={`ml-2 rounded-full px-2 py-1 text-[.68rem] ${activeDraftDay === dayIndex ? "bg-white/15" : "bg-[#eef4e9] text-[#166534]"}`}>{draftDayCounts.get(dayIndex) ?? 0}</span></button>; })}</div>
+              <div className="mt-4 flex flex-wrap gap-2 pb-2" role="tablist" aria-label="Treinos do plano">{dayIndexes.map((dayIndex) => { const dayMark = workoutDayMark(division, dayIndex); return <button key={dayIndex} type="button" role="tab" aria-selected={activeDraftDay === dayIndex} data-testid={`draft-day-tab-${dayIndex}`} className={`min-h-12 rounded-full border px-3 text-left text-sm font-black sm:px-4 ${activeDraftDay === dayIndex ? "border-[#166534] bg-[#166534] text-white" : "border-[#dfe5dc] bg-white text-[#334039]"}`} onClick={() => setActiveDraftDay(dayIndex)}><span className="sm:hidden">{dayMark}</span><span className="hidden sm:inline">{workoutDayShortLabel(division, dayIndex)}</span><span className={`ml-2 rounded-full px-2 py-1 text-[.68rem] ${activeDraftDay === dayIndex ? "bg-white/15" : "bg-[#eef4e9] text-[#166534]"}`}>{draftDayCounts.get(dayIndex) ?? 0}</span></button>; })}</div>
+              {builderNotice && <p role="status" aria-live="polite" className="mb-2 rounded-xl bg-[#e3f3dc] px-3 py-2 text-xs font-bold text-[#166534]">✓ {builderNotice}</p>}
 
               {dayIndexes.map((dayIndex) => {
                 if (dayIndex !== activeDraftDay) return null;
